@@ -1,4 +1,4 @@
-<a href="https://rubygems.org/gems/low_data" title="Install gem"><img src="https://badge.fury.io/rb/low_data.svg" alt="Gem version" height="18"></a>
+<a href="https://rubygems.org/gems/lowdata" title="Install gem"><img src="https://badge.fury.io/rb/lowdata.svg" alt="Gem version" height="18"></a>
 
 ## LowData [UNRELEASED]
 

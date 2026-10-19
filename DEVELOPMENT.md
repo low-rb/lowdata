@@ -4,11 +4,11 @@
 
 Install the gem and add to the application's Gemfile by executing:
 
-    $ bundle add low_data
+    $ bundle add lowdata
 
 If bundler is not being used to manage dependencies, install the gem by executing:
 
-    $ gem install low_data
+    $ gem install lowdata
 
 ## Usage
 
@@ -22,4 +22,4 @@ To install this gem onto your local machine, run `bundle exec rake install`. To 
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/low-rb/low_data.
+Bug reports and pull requests are welcome on GitHub at https://github.com/low-rb/lowdata.

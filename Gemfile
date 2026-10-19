@@ -2,7 +2,7 @@
 
 source 'https://rubygems.org'
 
-# Specify your gem's dependencies in low_data.gemspec
+# Specify your gem's dependencies in lowdata.gemspec
 gemspec
 
 group :development do

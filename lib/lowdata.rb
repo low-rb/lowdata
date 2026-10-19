@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require 'expressions'
-require 'low_type'
+require 'lowtype'
 require 'sequel'
 
 require_relative 'version'

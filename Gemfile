@@ -5,6 +5,9 @@ source 'https://rubygems.org'
 # Specify your gem's dependencies in lowdata.gemspec
 gemspec
 
+# Unreleased + and & operators.
+gem 'expressions', path: '../expressions'
+
 group :development do
   gem 'irb'
   gem 'rack'
@@ -12,4 +15,5 @@ group :development do
   gem 'rake', '~> 13.0'
   gem 'rspec', '~> 3.0'
   gem 'rubocop', require: false
+  gem 'sqlite3'
 end

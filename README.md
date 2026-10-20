@@ -4,35 +4,87 @@
 
 Instead of the model defining relationships and associated queries to the database, LowData follows the repository pattern with a twist; Data Expressions.
 
-This expression joins the `posts` table with the `users` table while representing a join conceptually as simple arithmetic:
+This expression combines the `posts` table with the `users` table while representing it conceptually as simple arithmetic:
 
 ```ruby
 class PostsData < LowData
   def all
-    Users[:username] + Posts[:title, :body]
+    Posts[:title, :body] + Users[:username]
   end
 end
 ```
 
-The above expression generates SQL to join the user table with the posts table and results in a list of posts with the user's username included in each row.
+The above expression returns a list of posts with each post's user nested inside it:
+
+```ruby
+[
+  { title: 'Hello', body: '...', user: { username: 'alice' } },
+  { title: 'World', body: '...', user: { username: 'bob' } }
+]
+```
+
+### Nesting
+
+`+` starts from the first table and nests each related table under the row it belongs to, following the foreign keys in your database:
+
+- A table your rows point to is nested as an object, named after the foreign key: `posts.user_id` nests as `user:`.
+- A table pointing to your rows is nested as an array, named after the table: `Users[:username] + Posts[:title]` nests each user's posts as `posts: [...]`.
+
+```ruby
+Users[:username] + Posts[:title] + Comments[:body]
+# => [
+#   { username: 'alice', posts: [{ title: 'Hello', comments: [{ body: 'Nice' }] }] },
+#   { username: 'carol', posts: [] }
+# ]
+```
+
+Every row of the first table appears exactly once, so rows never repeat or drop out, and sibling tables such as `Posts + Comments + Likes` nest side by side. The tables after the first can be written in any order. `+` runs one query per table, so call `to_a` rather than `sql`. It raises when foreign keys link the tables by more than one path, or when more than one foreign key links two tables.
+
+#### Brackets
+
+Tables can also nest inside another table's brackets, which nests them directly under that table. The code then has the shape of the output:
+
+```ruby
+Users[:username, Posts[:title, Likes[]]]
+# => [{ username: 'alice', posts: [{ title: 'Hello', likes: [{ id: 1, ... }] }] }]
+```
+
+`+` is shorthand for this where LowData can work out the structure from foreign keys: `Posts[:title] + Users[:username]` returns the same data as `Posts[:title, Users[:username]]`. Parentheses group a `+` chain, so `Users + (Posts + Likes)` nests likes under posts.
+
+A keyword names a nested table. On the "one" side the name also picks the foreign key, so the same table can nest twice:
+
+```ruby
+Reviews[:rating, author: Users[:username], editor: Users[:username]]
+# => [{ rating: 5, author: { username: 'alice' }, editor: { username: 'bob' } }]
+```
+
+#### Filters
+
+A keyword with any other value filters that table's rows, using Ruby values:
+
+```ruby
+Posts[:title, published: true]          # WHERE published = TRUE
+Posts[:title, views: 100..]             # WHERE views >= 100
+Posts[:title, status: %w[draft live]]   # WHERE status IN ('draft', 'live')
+Posts[:title, deleted_at: nil]          # WHERE deleted_at IS NULL
+```
+
+On a nested table a filter only filters the nested rows: `Users[:username, Posts[:title, published: true]]` returns every user, each with their published posts. In the SQL joins below, filters go in the `WHERE` clause.
+
+Ruby needs positional arguments before keyword arguments, so write columns and unnamed tables first: `Posts[:title, Likes[], published: true]`.
 
 ### Join Operators
 
-Each operator is a type of join, and the `ON` clause comes from the foreign keys in your database:
+The other operators are SQL joins that return flat rows, and the `ON` clause comes from the foreign keys in your database:
 
-| Expression                           | Join                                                       |
-|--------------------------------------|------------------------------------------------------------|
-| `Users[:username] + Posts[:title]`   | Many-to-one join; every post once, with its user's columns |
-| `Users[:username] & Posts[:title]`   | Inner join                                                 |
-| `Users[:username] < Posts[:title]`   | Left join                                                  |
-| `Users[:username] > Posts[:title]`   | Right join                                                 |
-| `Users[:username] <=> Posts[:title]` | Full outer join                                            |
+| Expression                           | Join            |
+|--------------------------------------|-----------------|
+| `Users[:username] & Posts[:title]`   | Inner join      |
+| `Users[:username] < Posts[:title]`   | Left join       |
+| `Users[:username] > Posts[:title]`   | Right join      |
+| `Users[:username] <=> Posts[:title]` | Full outer join |
 
-`+` is a many-to-one join: it keeps every row of the subject exactly once, as a left join, and adds columns from the tables those rows point to. The subject is the one table nothing else in the expression points to (the "many" side, such as posts to their one user), so `+` never repeats or drops rows and the order you write tables in doesn't matter: `Users + Posts + Comments` and `Comments + Posts + Users` both return every comment with its post's title and its user's username.
-
-When two tables point to the same table, such as `Posts + Comments + Likes`, there's no single table to keep and `+` raises. Use [Data Inversion](#data-inversion) or explicit joins instead: `(Users[] > Posts[]) < Comments[]` returns every post with its comments.
-
-Ruby evaluates `+` before `&`, and `&` before `<` and `>`, so add parentheses when mixing operators: `(Users[] < Posts[]) & Comments[]`.
+Ruby evaluates `&` before `<` and `>`, so add parentheses when mixing operators: `(Users[] < Posts[]) & Comments[]`. `+` can't be combined with these operators, because it returns nested data rather than rows.
 
 ### Data Inversion
 
@@ -46,4 +98,4 @@ class PostsData < LowData
 end
 ```
 
-This expression generates equivalent SQL to the `Users + Posts` example above. It's smart enough to know that we're in a `Posts` repository, and that our `Posts` table has a foreign key of `user_id` to the `Users` table. LowData then connects `:username` to this table automatically.
+This expression returns the same data as the `Posts + Users` example above, flattened into one row per post. It's smart enough to know that we're in a `Posts` repository, and that our `Posts` table has a foreign key of `user_id` to the `Users` table. LowData then connects `:username` to this table automatically.

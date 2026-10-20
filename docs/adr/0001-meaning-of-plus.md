@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-20
+- **Revised:** 2026-10-20. The decision was first option 6 (a flat many-to-one join), then changed to option 5 (nested results) with the subject taken from operand order. See [Why option 6 was replaced](#why-option-6-was-replaced).
 
 ## Context
 
@@ -44,20 +45,24 @@ Every option was judged on these questions:
 
 ## Decision
 
-**`+` is a many-to-one join (option 6).** It keeps every row of the subject exactly once, as a left join, and adds columns from the tables those rows point to.
+**`+` nests related rows (option 5), with the first table as the subject and both directions nested.**
 
-- **Subject:** the rows come from the one table in the expression that no other table points to.
-- **Joins:** every other table is left joined by following foreign keys up from the subject, so each subject row appears exactly once.
-- **Order:** the order you write the tables in doesn't matter.
-- **When it raises:** when two tables point to the same table (`Posts + Comments + Likes`), when tables aren't linked by a foreign key, or when more than one foreign key links two tables.
+- **Subject:** the first table written. Each of its rows appears exactly once.
+- **The "one" side:** a table the rows point to is nested as an object, named after the foreign key (`posts.user_id` nests as `user:`).
+- **The "many" side:** a table pointing to the rows is nested as an array, named after the table (`posts: [...]`).
+- **Order:** only the first table's position matters. Each other table nests under the table its foreign key links it to, whatever order it's written in.
+- **Queries:** one query per table, filtered with `IN (...)` on the parent rows' keys, so there are no N+1 queries. `+` has no single SQL query, so `sql` and `dataset` raise and `to_a` returns the nested data.
+- **When it raises:** when foreign keys link the tables by more than one path, when a table isn't linked, when more than one foreign key links two tables, or when `+` is combined with `&`, `<`, `>`, `<=>` or `Table[]`.
 
 ```ruby
-Users[:username] + Posts[:title]                    # every post once, with its username
-Comments[:body] + Posts[:title] + Users[:username]  # every comment once, with post title and username
-Users[:username] + Posts[:title] + Comments[:body]  # same rows
+Posts[:title] + Users[:username]
+# => [{ title: 'Hello', user: { username: 'alice' } }, { title: 'Orphan', user: nil }, ...]
+
+Users[:username] + Posts[:title] + Comments[:body]
+# => [{ username: 'alice', posts: [{ title: 'Hello', comments: [{ body: 'Nice' }] }] }, { username: 'carol', posts: [] }, ...]
 ```
 
-For "posts with their comments", where rows repeat, use `<` or `Table[]` instead.
+The README's headline example becomes `Posts[:title, :body] + Users[:username]`: posts, each with its user nested.
 
 ## Options considered
 
@@ -126,34 +131,50 @@ In `PostsData`, `+` always keeps every post.
 - ❌ Rows repeat when you join a table on the "many" side.
 - ❌ Not extensible.
 
-### Option 5: nested results
+### Option 5: nested results (chosen)
 
-`+` keeps one row per row of the first table. A related table your rows point to is merged into the row; related rows that point back at yours are attached as arrays.
+Described under [Decision](#decision). As first proposed, the "one" side was merged into the row (`{ title:, username: }`) rather than nested. Nesting both directions was chosen instead:
+
+| | Merged "one" side | Nested "one" side (chosen) |
+|---|---|---|
+| `Posts + Users` | `{ title:, username: }` | `{ title:, user: { username: } }` |
+| Column name clashes, e.g. two `id`s | possible | impossible |
+| Matches Rails' `post.user.username` | no | yes |
+| Shape depends on relationship direction | yes | no: always nested |
+
+- ✅ No repeated, dropped or mixed rows, and `LIMIT 10` means ten subjects.
+- ✅ Reads in written order: `Users + Posts + Comments` is users with their posts and comments.
+- ✅ Covers every common query shape: child rows with context (`Comments + Posts + Users`), parents with children (`Posts + Comments`) and everything from the top (`Users + Posts + Comments`).
+- ✅ Matches how Ruby developers use related data (`user.posts`, Rails `includes`) and the tools they use: Prisma `include`, GraphQL, Hasura, PostgREST's resource embedding and EdgeQL shapes all nest along relationships.
+- ✅ Gives `+` a job no other operator does: `+` builds data structures, and the other operators are SQL joins.
+- ❌ Two result shapes: `+` returns nested hashes while the other operators return flat rows, and `+` can't be combined with them.
+- ❌ Order matters, so `+` isn't commutative. Ruby developers don't expect it to be: `"a" + "b"` and `[1] + [2]` aren't either.
+- ❌ More to build: one query per table, then grouping in Ruby.
+- ❌ No single SQL query, and you can't filter or sort on nested columns as simply as on a flat join.
+
+### Option 6: many-to-one join (first chosen, then replaced)
+
+`+` only adds columns from the tables your rows point to. The subject is the one table in the expression that no other table points to, every other table is left joined by following foreign keys up from it, and the result is one flat row per subject row.
 
 ```ruby
-Posts[:title] + Users[:username] + Comments[:body]
-# => [{ title: 'Hello', username: 'alice', comments: [{ body: 'Nice' }] }, ...]
+Users[:username] + Posts[:title]                    # every post once, with its username
+Comments[:body] + Posts[:title] + Users[:username]  # every comment once, with post title and username
+Users[:username] + Posts[:title] + Comments[:body]  # same rows
 ```
-
-- ✅ No repeated or mixed rows, and `LIMIT 10` means ten subjects.
-- ✅ Matches what applications render. PostgREST's resource embedding is the closest prior art.
-- ✅ Gives `+` a job no other operator does.
-- ❌ Two result shapes: `+` returns nested hashes while the other operators return flat rows.
-- ❌ Hardest to build: one query per table, or database-specific JSON functions.
-- ❌ Order matters, and you can't filter or sort on nested columns as easily as on a flat join.
-
-### Option 6: many-to-one join (chosen)
-
-Described under [Decision](#decision).
 
 - ✅ Order doesn't matter, so `+` behaves like arithmetic.
 - ✅ No repeated, dropped or mixed rows: one flat row per subject row.
 - ✅ Covers the most common application query: child rows with their parents' columns.
-- ✅ The README example works as written.
-- ✅ Not a copy of `<`: `+` is the constrained join, and the other operators are unconstrained.
-- ✅ Extensible: anything it refuses raises, so `+` can later return results for those cases (for example nested results) without breaking anyone.
+- ✅ Not a copy of `<`: `+` is a left join that raises instead of repeating rows, as pandas' `merge(how="left", validate="many_to_one")` does.
 - ❌ It refuses "posts with their comments", so people have to learn that `+` only joins towards the "one" side.
-- ❌ The schema picks the subject. That's acceptable because exactly one table can qualify, and it raises otherwise.
+- ❌ The schema picks the subject, not the person writing the query.
+- ❌ Only partly extensible: see below.
+
+#### Why option 6 was replaced
+
+Because option 6 infers the subject, both orders of a pair mean the same thing: `Posts + Comments` and `Comments + Posts` both return comments with their post. So `Posts + Comments` can never later mean "posts with their comments" without changing results people already rely on.
+
+Tracking operand order was considered as a first step (the first table is the subject, and anything on the "many" side raises). With order tracked, `+` returns exactly the rows of a left join (`<`), and raises where `<` would repeat rows. That turned out to be the flat first stage of option 5: adding nesting only turns those errors into results. Rather than release the first stage and nest later, `+` implements option 5 fully now, while LowData is unreleased.
 
 ### Option 7: leave `+` undefined
 
@@ -180,23 +201,19 @@ Described under [Decision](#decision).
 | 3. Keep every table with a foreign key | no | yes | no | yes | ❌ |
 | 4. Repository's table | no | yes | no | no | ❌ |
 | Left join from the first operand | yes | yes | no | no | ❌ |
-| 5. Nested results | yes | no | no | no | ❌ |
-| **6. Many-to-one join** | **no** | **no** | **no** | **no** | **✅** |
+| **5. Nested results** | **first table only** | **no** | **no** | **no** | **–** |
+| 6. Many-to-one join | no | no | no | no | partly |
 | 7. Undefined | – | – | – | – | ✅ |
 
 ## Naming
 
-The option was first called a "lookup join". It's documented as a **many-to-one join**:
+While option 6 was the decision, `+` was documented as a **many-to-one join**, after first being called a "lookup join". "Many-to-one" consistently means that relationship elsewhere (ORM relationships, pandas `validate="many_to_one"`, Looker), while "lookup" is overloaded: MongoDB's `$lookup` nests the "many" side as arrays, and Django's "lookups" are filters.
 
-- "Many-to-one" consistently means this relationship elsewhere: ORM relationships (`@ManyToOne`, Django's `ForeignKey`), pandas `merge(validate="many_to_one")`, which raises when rows would repeat, and Looker's `relationship: many_to_one`.
-- "Lookup" is more familiar (Excel's `VLOOKUP`, ETL lookup steps, Flink's Lookup Join) but overloaded: MongoDB's `$lookup` nests the "many" side as arrays, and Django's "lookups" are filters.
-- Cardinality doesn't say which join type, so the docs state that rows are kept as a left join, and that "many-to-one" is from the subject's side (many posts to one user), whatever order the tables are written in.
-
-The code keeps `lookup` as its internal name (`:lookup`, `LowData::Lookup`).
+With option 5, `+` is documented as **nesting**, the same idea as PostgREST's "resource embedding", Prisma's `include` and Rails' `includes`. "Many-to-one" still describes the "one" side, which nests as an object. The code uses `:nest` and `LowData::Nesting`.
 
 ## Consequences
 
-- `+` is the everyday join for "rows with their context", and `&`, `<`, `>` and `<=>` give explicit control.
-- `+` runs are compiled as a group: the generated SQL starts `FROM` the subject, whatever order the tables are written in. Columns are still selected in the order they were written.
-- `+` must come before other joins in an expression, e.g. `(Users[] + Posts[]) < Comments[]`. A `+` that follows another join raises.
-- If "posts with their comments" through `+` turns out to be needed, nested results (option 5) can be added for the cases that raise today without breaking existing queries.
+- `+` is the way to load rows with their related data, and `&`, `<`, `>` and `<=>` are SQL joins returning flat rows.
+- `+` returns nested hashes from `to_a`. `sql` and `dataset` raise, because `+` runs one query per table.
+- `+` can't be mixed with the SQL join operators or `Table[]`. Flat results that keep every post with its comments use explicit joins: `(Users[] > Posts[]) < Comments[]`.
+- Each nested key comes from the schema: the foreign key column without `_id` for the "one" side, and the table name for the "many" side. A table linked by two foreign keys, such as `reviews.author_id` and `reviews.editor_id`, raises for now. Naming each nested key after its foreign key column (`author:`, `editor:`) would be a later, compatible way to support it.

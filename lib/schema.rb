@@ -33,9 +33,15 @@ class LowData
 
     # Foreign keys on the `from` table that reference the `to` table, as join conditions.
     def references(from:, to:)
+      links(from:, to:).map do |link|
+        link[:columns].zip(link[:keys]).to_h { |column, key| [Sequel[from][column], Sequel[to][key]] }
+      end
+    end
+
+    # Foreign keys on the `from` table that reference the `to` table, as their columns and the keys they reference.
+    def links(from:, to:)
       foreign_keys(table: from).select { |foreign_key| foreign_key[:table] == to }.map do |foreign_key|
-        keys = foreign_key[:key] || primary_key(table: to)
-        foreign_key[:columns].zip(keys).to_h { |column, key| [Sequel[from][column], Sequel[to][key]] }
+        { columns: foreign_key[:columns], keys: foreign_key[:key] || primary_key(table: to) }
       end
     end
 

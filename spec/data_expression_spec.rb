@@ -18,6 +18,7 @@ RSpec.describe LowData::DataExpression do
         primary_key :id
         foreign_key :user_id, :users
         String :title
+        Integer :views
       end
       db.create_table(:comments) do
         primary_key :id
@@ -36,9 +37,17 @@ RSpec.describe LowData::DataExpression do
         String :title
       end
 
+      db.create_table(:likes) do
+        primary_key :id
+        foreign_key :post_id, :posts
+        foreign_key :user_id, :users
+      end
+
       db[:users].import(%i[id username], [[1, 'alice'], [2, 'bob'], [3, 'carol']])
-      db[:posts].import(%i[id user_id title], [[1, 1, 'Hello'], [2, 2, 'World'], [3, nil, 'Orphan']])
+      db[:posts].import(%i[id user_id title views], [[1, 1, 'Hello', 10], [2, 2, 'World', 200], [3, nil, 'Orphan', nil]])
       db[:comments].import(%i[id post_id body], [[1, 1, 'Nice'], [2, nil, 'Spam']])
+      db[:likes].import(%i[id post_id user_id], [[1, 1, 2], [2, 1, 3]])
+      db[:reviews].import(%i[id author_id editor_id rating title], [[1, 1, 2, 5, 'Good']])
     end
   end
 
@@ -46,82 +55,197 @@ RSpec.describe LowData::DataExpression do
   after { LowData.database = nil }
 
   describe '+' do
-    it 'starts from the table holding the foreign key and left joins the table it points to' do
-      expect(repository.lookup.sql).to eq(
-        'SELECT `users`.`username`, `posts`.`title` FROM `posts` LEFT JOIN `users` ON (`posts`.`user_id` = `users`.`id`)'
+    it 'nests the table a row points to as an object named after the foreign key' do
+      expect(repository.nest_one.to_a).to contain_exactly(
+        { title: 'Hello', user: { username: 'alice' } },
+        { title: 'World', user: { username: 'bob' } },
+        { title: 'Orphan', user: nil }
       )
     end
 
-    it 'returns every row of the subject once, in either order' do
-      expected = [
-        { username: 'alice', title: 'Hello' },
-        { username: 'bob', title: 'World' },
-        { username: nil, title: 'Orphan' }
-      ]
-
-      expect(repository.lookup.to_a).to match_array(expected)
-      expect(repository.lookup_reversed.to_a).to match_array(expected)
-    end
-
-    it 'selects columns in the order the tables were written' do
-      expect(repository.lookup_reversed.sql).to start_with('SELECT `posts`.`title`, `users`.`username` FROM `posts`')
-    end
-
-    it 'follows foreign keys up from the subject' do
-      expect(repository.lookup_chained.sql).to eq(
-        'SELECT `users`.`username`, `posts`.`title`, `comments`.`body` FROM `comments` ' \
-        'LEFT JOIN `posts` ON (`comments`.`post_id` = `posts`.`id`) ' \
-        'LEFT JOIN `users` ON (`posts`.`user_id` = `users`.`id`)'
+    it 'nests the tables pointing to a row as an array named after the table' do
+      expect(repository.nest_many.to_a).to contain_exactly(
+        { username: 'alice', posts: [{ title: 'Hello' }] },
+        { username: 'bob', posts: [{ title: 'World' }] },
+        { username: 'carol', posts: [] }
       )
     end
 
-    it 'returns every row of the subject once in any order' do
-      expected = [
-        { username: 'alice', title: 'Hello', body: 'Nice' },
-        { username: nil, title: nil, body: 'Spam' }
-      ]
-
-      expect(repository.lookup_chained.to_a).to match_array(expected)
-      expect(repository.lookup_chained_reversed.to_a).to match_array(expected)
-      expect(repository.lookup_chained_middle.to_a).to match_array(expected)
-    end
-
-    it 'can be joined with other operators' do
-      expect(repository.lookup_then_left.to_a).to contain_exactly(
-        { username: 'alice', title: 'Hello', body: 'Nice' },
-        { username: 'bob', title: 'World', body: nil },
-        { username: nil, title: 'Orphan', body: nil }
+    it 'nests chains through each foreign key' do
+      expect(repository.nest_chain.to_a).to contain_exactly(
+        { username: 'alice', posts: [{ title: 'Hello', comments: [{ body: 'Nice' }] }] },
+        { username: 'bob', posts: [{ title: 'World', comments: [] }] },
+        { username: 'carol', posts: [] }
       )
     end
 
-    it 'keeps every post with explicit joins' do
+    it 'nests by foreign key whatever order the tables after the subject are written in' do
+      expect(repository.nest_chain_reordered.to_a).to match_array(repository.nest_chain.to_a)
+    end
+
+    it 'nests up through the tables a row points to' do
+      expect(repository.nest_up.to_a).to contain_exactly(
+        { body: 'Nice', post: { title: 'Hello', user: { username: 'alice' } } },
+        { body: 'Spam', post: nil }
+      )
+    end
+
+    it 'nests sibling tables without multiplying rows' do
+      expect(repository.nest_siblings.to_a).to contain_exactly(
+        { title: 'Hello', comments: [{ body: 'Nice' }], likes: [{ id: 1 }, { id: 2 }] },
+        { title: 'World', comments: [], likes: [] },
+        { title: 'Orphan', comments: [], likes: [] }
+      )
+    end
+
+    it 'returns every column when none are given' do
+      expect(repository.nest_all_columns.to_a).to include({ id: 1, user_id: 1, title: 'Hello', views: 10, user: { username: 'alice' } })
+    end
+
+    it 'runs one query per table' do
+      queries = []
+      logger = Object.new
+      logger.define_singleton_method(:info) { |message| queries << message if message.include?('SELECT') }
+      database.loggers << logger
+
+      repository.nest_chain.to_a
+
+      expect(queries.length).to eq(3)
+    end
+
+    it 'raises for SQL because it runs more than one query' do
+      expect { repository.nest_chain.sql }.to raise_error(LowData::Error, /no single SQL query/)
+    end
+
+    it 'raises when foreign keys link the tables by more than one path' do
+      expect { repository.nest_multiple_paths.to_a }.to raise_error(LowData::JoinError, /more than one path/)
+    end
+
+    it 'raises when no foreign key links the tables' do
+      expect { repository.nest_unlinked.to_a }.to raise_error(LowData::JoinError, /No foreign key links tags to users/)
+    end
+
+    it 'raises when more than one foreign key links the tables' do
+      expect { repository.nest_many_keys.to_a }.to raise_error(LowData::JoinError, /More than one foreign key links reviews and users/)
+    end
+
+    it 'raises on a self join' do
+      expect { repository.nest_self.to_a }.to raise_error(LowData::JoinError, /Can't join users to itself/)
+    end
+
+    it 'raises when combined with other joins' do
+      expect { repository.nest_then_left.sql }.to raise_error(LowData::JoinError, /can't be combined/)
+      expect { repository.nest_after_join.to_a }.to raise_error(LowData::JoinError, /can't be combined/)
+    end
+
+    it 'raises when combined with Table[]' do
+      expect { repository.nest_inverted.to_a }.to raise_error(LowData::JoinError, /Table\[\] can't be joined/)
+    end
+
+    it 'keeps every post flat with explicit joins' do
       expect(repository.explicit_posts.to_a).to contain_exactly(
         { username: 'alice', title: 'Hello', body: 'Nice' },
         { username: 'bob', title: 'World', body: nil },
         { username: nil, title: 'Orphan', body: nil }
       )
     end
+  end
 
-    it 'raises when two tables point to the same table' do
-      expect { repository.lookup_shared.sql }.to raise_error(
-        LowData::JoinError, /posts and reviews both point to users, so \+ has no single table to keep/
+  describe 'brackets' do
+    it 'nests a table in brackets the same as +' do
+      expect(repository.bracket_one.to_a).to match_array(repository.nest_one.to_a)
+      expect(repository.bracket_many.to_a).to match_array(repository.nest_many.to_a)
+    end
+
+    it 'nests directly under the table whose brackets it is in' do
+      expect(repository.bracket_deep.to_a).to contain_exactly(
+        { username: 'alice', posts: [{ title: 'Hello', likes: [{ id: 1 }, { id: 2 }] }] },
+        { username: 'bob', posts: [{ title: 'World', likes: [] }] },
+        { username: 'carol', posts: [] }
       )
     end
 
-    it 'raises when no foreign key links the tables' do
-      expect { repository.lookup_unlinked.sql }.to raise_error(LowData::JoinError, /No foreign key links users to tags/)
+    it 'groups a + chain with parentheses' do
+      expect(repository.grouped.to_a).to match_array(repository.bracket_deep.to_a)
     end
 
-    it 'raises when more than one foreign key links the tables' do
-      expect { repository.lookup_many_keys.sql }.to raise_error(LowData::JoinError, /More than one foreign key/)
+    it 'combines brackets and + in either direction' do
+      expected = [
+        { title: 'Hello', comments: [{ body: 'Nice' }], user: { username: 'alice' } },
+        { title: 'World', comments: [], user: { username: 'bob' } },
+        { title: 'Orphan', comments: [], user: nil }
+      ]
+
+      expect(repository.bracket_in_chain.to_a).to match_array(expected)
+      expect(repository.chain_in_bracket.to_a).to include(
+        { username: 'alice', posts: [{ title: 'Hello', comments: [{ body: 'Nice' }] }] }
+      )
     end
 
-    it 'raises on a self join' do
-      expect { repository.lookup_self.sql }.to raise_error(LowData::JoinError, /Can't join users to itself/)
+    it 'picks the foreign key from the name on the "one" side' do
+      expect(repository.named_one.to_a).to eq(
+        [{ rating: 5, author: { username: 'alice' }, editor: { username: 'bob' } }]
+      )
     end
 
-    it 'raises when following other joins' do
-      expect { repository.lookup_after_join.sql }.to raise_error(LowData::JoinError, /Put \+ joins first/)
+    it 'renames the nested key on the "many" side' do
+      expect(repository.named_many.to_a).to include({ username: 'alice', written: [{ title: 'Hello' }] })
+    end
+
+    it 'raises with a suggestion when a name matches no foreign key' do
+      expect { repository.named_unmatched.to_a }.to raise_error(
+        LowData::JoinError, /More than one foreign key links reviews and users. Name the one to follow, e.g. author: Users\[\] or editor/
+      )
+    end
+
+    it 'raises when two nested tables have the same key' do
+      expect { repository.duplicate_keys.to_a }.to raise_error(LowData::JoinError, /Two tables nest in users as posts/)
+    end
+
+    it 'raises when combined with other joins' do
+      expect { repository.bracket_in_join.sql }.to raise_error(LowData::JoinError, /can't be combined/)
+    end
+
+    it 'raises for columns that are not symbols' do
+      expect { Class.new(LowData).const_missing(:Posts)['title'] }.to raise_error(ArgumentError, /Columns are symbols/)
+    end
+
+    it 'raises for filters on Table[]' do
+      expect { PostsData.const_missing(:Table)[:title, views: 1] }.to raise_error(ArgumentError, /column names only/)
+    end
+  end
+
+  describe 'filters' do
+    it 'filters by a range' do
+      expect(repository.filter_range.sql).to eq('SELECT `posts`.`title` FROM `posts` WHERE (`posts`.`views` >= 100)')
+      expect(repository.filter_upper.to_a).to eq([{ title: 'Hello' }])
+    end
+
+    it 'filters by a list of values' do
+      expect(repository.filter_in.to_a).to contain_exactly({ title: 'Hello' }, { title: 'Orphan' })
+    end
+
+    it 'filters by nil' do
+      expect(repository.filter_nil.to_a).to eq([{ title: 'Orphan' }])
+    end
+
+    it 'puts filters on joined tables in the WHERE clause' do
+      expect(repository.filter_joined.sql).to eq(
+        'SELECT `users`.`username`, `posts`.`title` FROM `users` INNER JOIN `posts` ON (`posts`.`user_id` = `users`.`id`) ' \
+        'WHERE (`posts`.`views` >= 100)'
+      )
+    end
+
+    it 'filters the nested rows, not the parents' do
+      expect(repository.filter_nested.to_a).to contain_exactly(
+        { username: 'alice', posts: [] },
+        { username: 'bob', posts: [{ title: 'World' }] },
+        { username: 'carol', posts: [] }
+      )
+    end
+
+    it 'filters the subject' do
+      expect(repository.filter_subject.to_a).to eq([{ username: 'alice', posts: [{ title: 'Hello' }] }])
     end
   end
 

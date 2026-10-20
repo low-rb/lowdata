@@ -9,7 +9,8 @@ require_relative 'errors'
 require_relative 'data_expression'
 require_relative 'schema'
 require_relative 'inversion'
-require_relative 'lookup'
+require_relative 'nesting'
+require_relative 'nesting_tree'
 require_relative 'query_compiler'
 require_relative 'table_reference'
 
@@ -30,6 +31,11 @@ class LowData
       return inverted_table if name == :Table
 
       TableReference.new(table: table_name(name))
+    end
+
+    # The constant a table is written as in a data expression: :blog_posts is BlogPosts.
+    def constant_name(table)
+      table.to_s.split('_').map(&:capitalize).join
     end
 
     private

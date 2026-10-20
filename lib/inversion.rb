@@ -33,11 +33,7 @@ class LowData
 
     def ambiguous_message(table:, column:, owners:)
       "#{owners.join(' and ')} both have a #{column} column and are related to #{table}. " \
-        "Join explicitly instead, e.g. #{constant(table)}[] < #{constant(owners.first)}[:#{column}]"
-    end
-
-    def constant(table)
-      table.to_s.split('_').map(&:capitalize).join
+        "Join explicitly instead, e.g. #{LowData.constant_name(table)}[] < #{LowData.constant_name(owners.first)}[:#{column}]"
     end
   end
 end

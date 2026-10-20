@@ -6,16 +6,18 @@ class LowData
   #   Users[:username] & Posts[:title] # Inner join.
   #   Users[:username] < Posts[:title] # Left join.
   #   Users[:username] > Posts[:title] # Right join.
+  #   Table[:username, :title]         # Inverted; the repository's table joined to whichever tables own the columns.
   class DataExpression < ::Expressions::Expression
     Source = ::Data.define(:table, :columns)
     Join = ::Data.define(:type, :left, :right)
+    Inversion = ::Data.define(:table, :columns)
 
     JOIN_HOOKS = { add: :full, intersect: :inner, lt: :left, gt: :right }.freeze
 
     attr_reader :node
 
-    def initialize(table:, columns:)
-      @node = Source.new(table:, columns:)
+    def initialize(node:)
+      @node = node
     end
 
     def dataset(database: LowData.database)

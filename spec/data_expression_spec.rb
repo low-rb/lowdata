@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
 require_relative '../lib/lowdata'
+require_relative 'fixtures/articles_data'
 require_relative 'fixtures/posts_data'
+require_relative 'fixtures/users_data'
 
 RSpec.describe LowData::DataExpression do
   subject(:repository) { PostsData.new }
@@ -31,6 +33,7 @@ RSpec.describe LowData::DataExpression do
         foreign_key :author_id, :users
         foreign_key :editor_id, :users
         Integer :rating
+        String :title
       end
 
       db[:users].import(%i[id username], [[1, 'alice'], [2, 'bob'], [3, 'carol']])
@@ -127,6 +130,54 @@ RSpec.describe LowData::DataExpression do
 
     it 'raises when Ruby precedence nests a join on the right' do
       expect { repository.nested.sql }.to raise_error(LowData::JoinError, /Add parentheses/)
+    end
+  end
+
+  describe 'Table[]' do
+    it 'joins the repository table to the tables that own each column' do
+      expect(repository.inverted.sql).to eq(
+        'SELECT `users`.`username`, `posts`.`title`, `comments`.`body` FROM `posts` ' \
+        'LEFT JOIN `users` ON (`posts`.`user_id` = `users`.`id`) ' \
+        'LEFT JOIN `comments` ON (`comments`.`post_id` = `posts`.`id`)'
+      )
+    end
+
+    it 'keeps every row from the repository table' do
+      expect(repository.inverted.to_a).to contain_exactly(
+        { username: 'alice', title: 'Hello', body: 'Nice' },
+        { username: 'bob', title: 'World', body: nil },
+        { username: nil, title: 'Orphan', body: nil }
+      )
+    end
+
+    it 'selects columns in the order given' do
+      expect(repository.inverted_order.sql).to start_with('SELECT `posts`.`title`, `users`.`username` FROM `posts`')
+    end
+
+    it 'uses the table set on the repository' do
+      expect(ArticlesData.new.all.sql).to eq('SELECT `posts`.`title` FROM `posts`')
+    end
+
+    it 'raises when a column is only on an unrelated table' do
+      expect { repository.inverted_unrelated.sql }.to raise_error(LowData::JoinError, /No table related to posts has a name column/)
+    end
+
+    it 'raises when no table has the column' do
+      expect { repository.inverted_missing.sql }.to raise_error(LowData::JoinError, /No table related to posts has a missing column/)
+    end
+
+    it 'raises when more than one related table has the column' do
+      expect { UsersData.new.ambiguous.sql }.to raise_error(
+        LowData::JoinError, /posts and reviews both have a title column.*Users\[\] < Posts\[:title\]/
+      )
+    end
+
+    it 'raises when more than one foreign key links the owning table' do
+      expect { UsersData.new.many_keys.sql }.to raise_error(LowData::JoinError, /More than one foreign key/)
+    end
+
+    it 'raises when joined with another expression' do
+      expect { repository.inverted_join.sql }.to raise_error(LowData::JoinError, /Table\[\] can't be joined/)
     end
   end
 

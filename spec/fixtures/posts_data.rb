@@ -15,4 +15,9 @@ class PostsData < LowData
   def self_join = Users[:username] & Users[:id]
   def value = Users[:username] & :posts
   def type = Users[:username] & String
+  def inverted = Table[:username, :title, :body]
+  def inverted_order = Table[:title, :username]
+  def inverted_unrelated = Table[:name]
+  def inverted_missing = Table[:missing]
+  def inverted_join = Table[:title] & Users[:username]
 end

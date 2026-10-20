@@ -14,6 +14,7 @@ class LowData
     # Builds the tree for an expression: a table with any tables nested in its brackets, or a + chain.
     def build(node:)
       raise JoinError, QueryCompiler::INVERSION_JOIN_MESSAGE if node.is_a?(DataExpression::Inversion)
+      return build(node: node.node).with(keys: node.keys, rows: node.rows) if node.is_a?(DataExpression::Ordered)
       return bracketed(source: node) if node.is_a?(DataExpression::Source)
 
       chain(operands: operands(node:).map { |operand| build(node: operand) })
@@ -110,9 +111,7 @@ class LowData
     end
 
     def named_link(links:, key:)
-      return unless key
-
-      named = links.select { |link| [key, :"#{key}_id"].include?(link[:columns].first) }
+      named = links.select { |link| key && [key, :"#{key}_id"].include?(link[:columns].first) }
       named.first if named.one?
     end
 

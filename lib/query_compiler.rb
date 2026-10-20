@@ -5,6 +5,8 @@ class LowData
   class QueryCompiler
     INVERSION_JOIN_MESSAGE = "Table[] can't be joined with other expressions"
     NESTING_JOIN_MESSAGE = 'Nested tables return nested data, so + and tables nested in brackets can\'t be combined with &, <, > or <=>'
+    ORDERED_JOIN_MESSAGE = 'Sort and limit after joining, e.g. (Users[] < Posts[]) ^ Col[:username]. Ruby binds ^ tighter ' \
+                           'than <, > and <=>, and * and / tighter than every join, so add parentheses around the join'
 
     def initialize(database:)
       raise ConfigError, ConfigError::MISSING_DATABASE if database.nil?
@@ -12,26 +14,39 @@ class LowData
       @database = database
       @schema = Schema.new(database:)
       @filters = FilterCompiler.new(database:, schema: @schema)
+      @orders = OrderCompiler.new(schema: @schema)
     end
 
     def compile(node:)
-      return compile_inversion(node:) if node.is_a?(DataExpression::Inversion)
+      return compile_ordered(node:) if node.is_a?(DataExpression::Ordered)
 
-      sources = []
-      dataset = filter(dataset: build(node:, sources:), sources:)
-      dataset.select(*sources.flat_map { |source| selections(source:) })
+      compile_unordered(node:, sources: [])
     end
 
     private
 
-    def compile_inversion(node:)
-      tree, selections = Inversion.new(schema: @schema).resolve(node:)
+    # Sort keys and rows apply to the whole query, so each sort column can belong to any joined table.
+    def compile_ordered(node:)
       sources = []
+      dataset = compile_unordered(node: node.node, sources:)
+      @orders.apply(dataset:, keys: node.keys, rows: node.rows, tables: sources.map(&:table))
+    end
+
+    def compile_unordered(node:, sources:)
+      return compile_inversion(node:, sources:) if node.is_a?(DataExpression::Inversion)
+
+      dataset = filter(dataset: build(node:, sources:), sources:)
+      dataset.select(*sources.flat_map { |source| selections(source:) })
+    end
+
+    def compile_inversion(node:, sources:)
+      tree, selections = Inversion.new(schema: @schema).resolve(node:)
       filter(dataset: build(node: tree, sources:), sources:).select(*selections)
     end
 
     def build(node:, sources:)
       raise JoinError, INVERSION_JOIN_MESSAGE if node.is_a?(DataExpression::Inversion)
+      raise JoinError, ORDERED_JOIN_MESSAGE if node.is_a?(DataExpression::Ordered)
       return source_dataset(source: node, sources:) if node.is_a?(DataExpression::Source)
       raise JoinError, NESTING_JOIN_MESSAGE if nesting?(node:) || nesting?(node: node.right)
 
@@ -42,6 +57,7 @@ class LowData
 
     def join_dataset(dataset:, type:, right:, sources:)
       raise JoinError, INVERSION_JOIN_MESSAGE if right.is_a?(DataExpression::Inversion)
+      raise JoinError, ORDERED_JOIN_MESSAGE if right.is_a?(DataExpression::Ordered)
       raise JoinError, NESTING_JOIN_MESSAGE if right.nested.any?
       raise JoinError, "Can't join #{right.table} to itself" if sources.any? { |source| source.table == right.table }
 

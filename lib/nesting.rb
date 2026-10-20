@@ -8,8 +8,15 @@ class LowData
   class Nesting
     # A table in the nesting tree. `link` connects it to its parent node: `parent_column` on the parent's rows matches
     # `child_column` on this table's rows, and `many` nests the matches as an array rather than one object.
-    Node = ::Data.define(:source, :key, :link, :children)
+    # `keys` and `rows` sort and limit the table's rows, per parent when it's nested.
+    Node = ::Data.define(:source, :key, :link, :children, :keys, :rows) do
+      def initialize(source:, key:, link:, children:, keys: [], rows: nil)
+        super
+      end
+    end
     Link = ::Data.define(:parent_column, :child_column, :many)
+
+    ROW_NUMBER = :lowdata_row_number
 
     def initialize(database:)
       raise ConfigError, ConfigError::MISSING_DATABASE if database.nil?
@@ -17,6 +24,7 @@ class LowData
       @database = database
       @schema = Schema.new(database:)
       @filters = FilterCompiler.new(database:, schema: @schema)
+      @orders = OrderCompiler.new(schema: @schema)
     end
 
     def load(node:)
@@ -28,7 +36,30 @@ class LowData
 
     def fetch(node:, filter: nil)
       dataset = @filters.apply(dataset: @database[node.source.table].select(*select_columns(node:)), source: node.source)
-      filter ? dataset.where(filter).all : dataset.all
+      dataset = dataset.where(filter) if filter
+      return per_parent(node:, dataset:) if filter && node.rows
+
+      @orders.apply(dataset:, keys: node.keys, rows: node.rows, tables: [node.source.table]).all
+    end
+
+    # Keeps each parent's rows, e.g. each user's 3 most viewed posts, by numbering the rows within each parent.
+    def per_parent(node:, dataset:)
+      numbered = dataset.select_append(row_number(node:).as(ROW_NUMBER))
+      @database.from(numbered).where(ROW_NUMBER => row_numbers(rows: node.rows)).order(ROW_NUMBER)
+               .all.map { |row| row.except(ROW_NUMBER) }
+    end
+
+    def row_number(node:)
+      table = node.source.table
+      order = @orders.order(keys: node.keys, tables: [table])
+      Sequel.function(:row_number).over(partition: Sequel[table][node.link.child_column], order: order.empty? ? nil : order)
+    end
+
+    # Row numbers start at 1, and rows count from 0.
+    def row_numbers(rows:)
+      @orders.check_rows!(rows:)
+      first = rows.offset + 1
+      rows.limit ? first..(rows.offset + rows.limit) : (first..)
     end
 
     # The columns asked for, plus the columns each link needs.

@@ -96,6 +96,32 @@ Users(published)[:username, published[:title]]   # only users with published pos
 
 In the SQL joins below, filters go in the `WHERE` clause. To split a long expression over several lines, break inside the brackets and keep `) {` and `}[` together. A `[` at the start of a line starts a new array, silently dropping the columns.
 
+#### Sorting and limits
+
+`^` sorts by the columns in `Col[]`, ascending like an arrow going up, and `-` reverses them. Arithmetic limits the rows:
+
+```ruby
+Posts[:title] ^ Col[:views]                    # ORDER BY views
+Posts[:title] ^ Col[:views, :title]            # ORDER BY views, title
+Posts[:title] ^ -Col[:views]                   # ORDER BY views DESC
+Posts[:title] ^ -Col[:views] + Col[:title]     # ORDER BY views DESC, title
+Posts[:title] ^ -Col[:views] * 10              # ... LIMIT 10
+Posts[:title] ^ -Col[:views][20...40]          # ... LIMIT 20 OFFSET 20
+(Posts[:title] ^ -Col[:views] / 20)[2]         # ... LIMIT 20 OFFSET 40, the third page of 20
+Posts[:title] * 5                              # LIMIT 5
+```
+
+Rows and pages count from 0, as in Ruby. Ruby binds `-`, `+`, `*`, `/` and `[]` tighter than `^`, so a limit travels with its sort and needs no parentheses, except around pages before `[page]`.
+
+Inside brackets, a sort or limit applies to each parent's nested rows:
+
+```ruby
+Users[:username, Posts[:title] ^ -Col[:views] * 3] ^ Col[:username]
+# => Users alphabetically, each with their 3 most viewed posts
+```
+
+After `&`, a sort applies to the joined rows, using whichever table has the column. `<`, `>` and `<=>` bind looser than `^`, so put the join in parentheses: `(Users[] < Posts[]) ^ Col[:username]`. After a `+` chain, a sort applies to the first table.
+
 ### Join Operators
 
 The other operators are SQL joins that return flat rows, and the `ON` clause comes from the foreign keys in your database:

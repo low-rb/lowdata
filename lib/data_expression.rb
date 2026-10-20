@@ -2,17 +2,18 @@
 
 class LowData
   # Joins tables with operators and builds a join tree for QueryCompiler:
-  #   Users[:username] + Posts[:title] # Full outer join.
-  #   Users[:username] & Posts[:title] # Inner join.
-  #   Users[:username] < Posts[:title] # Left join.
-  #   Users[:username] > Posts[:title] # Right join.
-  #   Table[:username, :title]         # Inverted; the repository's table joined to whichever tables own the columns.
+  #   Users[:username] + Posts[:title]   # Relationship join; every row of the table holding the foreign key.
+  #   Users[:username] & Posts[:title]   # Inner join.
+  #   Users[:username] < Posts[:title]   # Left join.
+  #   Users[:username] > Posts[:title]   # Right join.
+  #   Users[:username] <=> Posts[:title] # Full outer join.
+  #   Table[:username, :title]           # Inverted; the repository's table joined to whichever tables own the columns.
   class DataExpression < ::Expressions::Expression
     Source = ::Data.define(:table, :columns)
     Join = ::Data.define(:type, :left, :right)
     Inversion = ::Data.define(:table, :columns)
 
-    JOIN_HOOKS = { add: :full, intersect: :inner, lt: :left, gt: :right }.freeze
+    JOIN_HOOKS = { add: :relationship, intersect: :inner, lt: :left, gt: :right, compare: :full }.freeze
 
     attr_reader :node
 

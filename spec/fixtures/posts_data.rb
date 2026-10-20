@@ -2,7 +2,13 @@
 
 # Repositories are defined with the class keyword so constants like `Users` resolve through LowData.const_missing.
 class PostsData < LowData
-  def full = Users[:username] + Posts[:title]
+  def relationship = Users[:username] + Posts[:title]
+  def relationship_reversed = Posts[:title] + Users[:username]
+  def relationship_chained = Users[:username] + Posts[:title] + Comments[:body]
+  def relationship_chained_reversed = Comments[:body] + Posts[:title] + Users[:username]
+  def relationship_chained_middle = Posts[:title] + Comments[:body] + Users[:username]
+  def explicit_posts = (Users[:username] > Posts[:title]) < Comments[:body]
+  def full = Users[:username] <=> Posts[:title]
   def inner = Users[:username] & Posts[:title]
   def left = Users[:username] < Posts[:title]
   def right = Users[:username] > Posts[:title]

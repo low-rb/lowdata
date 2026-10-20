@@ -40,9 +40,16 @@ class LowData
       raise JoinError, INVERSION_JOIN_MESSAGE if right.is_a?(DataExpression::Inversion)
       raise JoinError, "Can't join #{right.table} to itself" if sources.any? { |source| source.table == right.table }
 
-      conditions = join_conditions(left_tables: sources.map(&:table), right_table: right.table)
+      conditions, referencing_table = join_conditions(left_tables: sources.map(&:table), right_table: right.table)
       sources << right
-      dataset.join_table(type, right.table, conditions)
+      dataset.join_table(join_type(type:, right_table: right.table, referencing_table:), right.table, conditions)
+    end
+
+    # A relationship join keeps every row of the table holding the foreign key.
+    def join_type(type:, right_table:, referencing_table:)
+      return type unless type == :relationship
+
+      referencing_table == right_table ? :right : :left
     end
 
     def source_dataset(source:, sources:)
@@ -56,9 +63,11 @@ class LowData
       source.columns.map { |column| Sequel[source.table][column] }
     end
 
+    # Returns the join conditions and the table holding the foreign key.
     def join_conditions(left_tables:, right_table:)
       candidates = left_tables.flat_map do |left_table|
-        @schema.references(from: right_table, to: left_table) + @schema.references(from: left_table, to: right_table)
+        @schema.references(from: right_table, to: left_table).map { |conditions| [conditions, right_table] } +
+          @schema.references(from: left_table, to: right_table).map { |conditions| [conditions, left_table] }
       end
 
       raise JoinError, "No foreign key links #{right_table} to #{left_tables.join(', ')}" if candidates.empty?

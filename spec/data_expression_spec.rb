@@ -46,6 +46,55 @@ RSpec.describe LowData::DataExpression do
   after { LowData.database = nil }
 
   describe '+' do
+    it 'keeps every row of the table holding the foreign key when it is on the right' do
+      expect(repository.relationship.sql).to eq(
+        'SELECT `users`.`username`, `posts`.`title` FROM `users` RIGHT JOIN `posts` ON (`posts`.`user_id` = `users`.`id`)'
+      )
+    end
+
+    it 'keeps every row of the table holding the foreign key when it is on the left' do
+      expect(repository.relationship_reversed.sql).to eq(
+        'SELECT `posts`.`title`, `users`.`username` FROM `posts` LEFT JOIN `users` ON (`posts`.`user_id` = `users`.`id`)'
+      )
+    end
+
+    it 'returns the same rows in either order' do
+      expected = [
+        { username: 'alice', title: 'Hello' },
+        { username: 'bob', title: 'World' },
+        { username: nil, title: 'Orphan' }
+      ]
+
+      expect(repository.relationship.to_a).to match_array(expected)
+      expect(repository.relationship_reversed.to_a).to match_array(expected)
+    end
+
+    it 'chains through each foreign key' do
+      expect(repository.relationship_chained.sql).to eq(
+        'SELECT `users`.`username`, `posts`.`title`, `comments`.`body` FROM `users` ' \
+        'RIGHT JOIN `posts` ON (`posts`.`user_id` = `users`.`id`) ' \
+        'RIGHT JOIN `comments` ON (`comments`.`post_id` = `posts`.`id`)'
+      )
+    end
+
+    it 'returns the rows of the table furthest down the foreign keys in any order' do
+      expected = [{ username: 'alice', title: 'Hello', body: 'Nice' }]
+
+      expect(repository.relationship_chained.to_a).to match_array(expected)
+      expect(repository.relationship_chained_reversed.to_a).to match_array(expected)
+      expect(repository.relationship_chained_middle.to_a).to match_array(expected)
+    end
+
+    it 'keeps every post with explicit joins' do
+      expect(repository.explicit_posts.to_a).to contain_exactly(
+        { username: 'alice', title: 'Hello', body: 'Nice' },
+        { username: 'bob', title: 'World', body: nil },
+        { username: nil, title: 'Orphan', body: nil }
+      )
+    end
+  end
+
+  describe '<=>' do
     it 'builds a full outer join' do
       expect(repository.full.sql).to eq(
         'SELECT `users`.`username`, `posts`.`title` FROM `users` FULL JOIN `posts` ON (`posts`.`user_id` = `users`.`id`)'

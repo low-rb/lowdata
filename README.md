@@ -16,6 +16,24 @@ end
 
 The above expression generates SQL to join the user table with the posts table and results in a list of posts with the user's username included in each row.
 
+### Join Operators
+
+Each operator is a type of join, and the `ON` clause comes from the foreign keys in your database:
+
+| Expression                           | Join                                                     |
+|--------------------------------------|----------------------------------------------------------|
+| `Users[:username] + Posts[:title]`   | Relationship join; every row of the table with the foreign key |
+| `Users[:username] & Posts[:title]`   | Inner join                                               |
+| `Users[:username] < Posts[:title]`   | Left join                                                |
+| `Users[:username] > Posts[:title]`   | Right join                                               |
+| `Users[:username] <=> Posts[:title]` | Full outer join                                          |
+
+`+` adds the columns of a related table to the rows of the table holding the foreign key, so `Users + Posts` and `Posts + Users` both return every post.
+
+In a chain, `+` returns the rows of the table furthest down the foreign keys, in any order: `Users + Posts + Comments` and `Comments + Posts + Users` both return every comment. To keep every post instead, use [Data Inversion](#data-inversion) or explicit joins: `(Users[] > Posts[]) < Comments[]`.
+
+Ruby evaluates `+` before `&`, and `&` before `<` and `>`, so add parentheses when mixing operators: `(Users[] < Posts[]) & Comments[]`.
+
 ### Data Inversion
 
 Data Expressions can invert the usual database query logic; instead of building a query of what we want from the database, we build the table we want and let the expression build the query.

@@ -4,6 +4,7 @@ class LowData
   # Compiles a DataExpression join tree into a Sequel dataset, inferring each join's ON clause from foreign keys.
   class QueryCompiler
     INVERSION_JOIN_MESSAGE = "Table[] can't be joined with other expressions"
+    LOOKUP_JOIN_MESSAGE = '+ joins tables, not the result of other joins. Put + joins first, e.g. (Comments[] + Posts[]) & Users[]'
 
     def initialize(database:)
       raise ConfigError, 'Set LowData.database to a Sequel database, e.g. LowData.database = Sequel.sqlite' if database.nil?
@@ -30,6 +31,7 @@ class LowData
     def build(node:, sources:)
       raise JoinError, INVERSION_JOIN_MESSAGE if node.is_a?(DataExpression::Inversion)
       return source_dataset(source: node, sources:) if node.is_a?(DataExpression::Source)
+      return lookup_dataset(node:, sources:) if node.type == :lookup
 
       raise JoinError, nested_join_message if node.right.is_a?(DataExpression::Join)
 
@@ -40,16 +42,25 @@ class LowData
       raise JoinError, INVERSION_JOIN_MESSAGE if right.is_a?(DataExpression::Inversion)
       raise JoinError, "Can't join #{right.table} to itself" if sources.any? { |source| source.table == right.table }
 
-      conditions, referencing_table = join_conditions(left_tables: sources.map(&:table), right_table: right.table)
+      conditions = join_conditions(left_tables: sources.map(&:table), right_table: right.table)
       sources << right
-      dataset.join_table(join_type(type:, right_table: right.table, referencing_table:), right.table, conditions)
+      dataset.join_table(type, right.table, conditions)
     end
 
-    # A relationship join keeps every row of the table holding the foreign key.
-    def join_type(type:, right_table:, referencing_table:)
-      return type unless type == :relationship
+    # Builds a chain of + joins from its subject, then selects columns in the order the tables were written.
+    def lookup_dataset(node:, sources:)
+      lookup_sources = lookup_sources(node:)
+      dataset = build(node: Lookup.new(schema: @schema).resolve(sources: lookup_sources), sources: [])
+      sources.concat(lookup_sources)
+      dataset
+    end
 
-      referencing_table == right_table ? :right : :left
+    def lookup_sources(node:)
+      return [node] if node.is_a?(DataExpression::Source)
+      raise JoinError, INVERSION_JOIN_MESSAGE if node.is_a?(DataExpression::Inversion)
+      raise JoinError, LOOKUP_JOIN_MESSAGE unless node.type == :lookup && node.right.is_a?(DataExpression::Source)
+
+      lookup_sources(node: node.left) + [node.right]
     end
 
     def source_dataset(source:, sources:)
@@ -63,11 +74,9 @@ class LowData
       source.columns.map { |column| Sequel[source.table][column] }
     end
 
-    # Returns the join conditions and the table holding the foreign key.
     def join_conditions(left_tables:, right_table:)
       candidates = left_tables.flat_map do |left_table|
-        @schema.references(from: right_table, to: left_table).map { |conditions| [conditions, right_table] } +
-          @schema.references(from: left_table, to: right_table).map { |conditions| [conditions, left_table] }
+        @schema.references(from: right_table, to: left_table) + @schema.references(from: left_table, to: right_table)
       end
 
       raise JoinError, "No foreign key links #{right_table} to #{left_tables.join(', ')}" if candidates.empty?

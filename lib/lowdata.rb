@@ -9,6 +9,7 @@ require_relative 'errors'
 require_relative 'data_expression'
 require_relative 'schema'
 require_relative 'inversion'
+require_relative 'lookup'
 require_relative 'query_compiler'
 require_relative 'table_reference'
 

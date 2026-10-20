@@ -20,17 +20,17 @@ The above expression generates SQL to join the user table with the posts table a
 
 Each operator is a type of join, and the `ON` clause comes from the foreign keys in your database:
 
-| Expression                           | Join                                                     |
-|--------------------------------------|----------------------------------------------------------|
-| `Users[:username] + Posts[:title]`   | Relationship join; every row of the table with the foreign key |
-| `Users[:username] & Posts[:title]`   | Inner join                                               |
-| `Users[:username] < Posts[:title]`   | Left join                                                |
-| `Users[:username] > Posts[:title]`   | Right join                                               |
-| `Users[:username] <=> Posts[:title]` | Full outer join                                          |
+| Expression                           | Join                                                       |
+|--------------------------------------|------------------------------------------------------------|
+| `Users[:username] + Posts[:title]`   | Many-to-one join; every post once, with its user's columns |
+| `Users[:username] & Posts[:title]`   | Inner join                                                 |
+| `Users[:username] < Posts[:title]`   | Left join                                                  |
+| `Users[:username] > Posts[:title]`   | Right join                                                 |
+| `Users[:username] <=> Posts[:title]` | Full outer join                                            |
 
-`+` adds the columns of a related table to the rows of the table holding the foreign key, so `Users + Posts` and `Posts + Users` both return every post.
+`+` is a many-to-one join: it keeps every row of the subject exactly once, as a left join, and adds columns from the tables those rows point to. The subject is the one table nothing else in the expression points to (the "many" side, such as posts to their one user), so `+` never repeats or drops rows and the order you write tables in doesn't matter: `Users + Posts + Comments` and `Comments + Posts + Users` both return every comment with its post's title and its user's username.
 
-In a chain, `+` returns the rows of the table furthest down the foreign keys, in any order: `Users + Posts + Comments` and `Comments + Posts + Users` both return every comment. To keep every post instead, use [Data Inversion](#data-inversion) or explicit joins: `(Users[] > Posts[]) < Comments[]`.
+When two tables point to the same table, such as `Posts + Comments + Likes`, there's no single table to keep and `+` raises. Use [Data Inversion](#data-inversion) or explicit joins instead: `(Users[] > Posts[]) < Comments[]` returns every post with its comments.
 
 Ruby evaluates `+` before `&`, and `&` before `<` and `>`, so add parentheses when mixing operators: `(Users[] < Posts[]) & Comments[]`.
 

@@ -2,7 +2,7 @@
 
 class LowData
   # Joins tables with operators and builds a join tree for QueryCompiler:
-  #   Users[:username] + Posts[:title]   # Relationship join; every row of the table holding the foreign key.
+  #   Users[:username] + Posts[:title]   # Many-to-one join; every post once, with columns from the tables it points to.
   #   Users[:username] & Posts[:title]   # Inner join.
   #   Users[:username] < Posts[:title]   # Left join.
   #   Users[:username] > Posts[:title]   # Right join.
@@ -13,7 +13,7 @@ class LowData
     Join = ::Data.define(:type, :left, :right)
     Inversion = ::Data.define(:table, :columns)
 
-    JOIN_HOOKS = { add: :relationship, intersect: :inner, lt: :left, gt: :right, compare: :full }.freeze
+    JOIN_HOOKS = { add: :lookup, intersect: :inner, lt: :left, gt: :right, compare: :full }.freeze
 
     attr_reader :node
 

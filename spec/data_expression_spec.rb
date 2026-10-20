@@ -38,7 +38,7 @@ RSpec.describe LowData::DataExpression do
 
       db[:users].import(%i[id username], [[1, 'alice'], [2, 'bob'], [3, 'carol']])
       db[:posts].import(%i[id user_id title], [[1, 1, 'Hello'], [2, 2, 'World'], [3, nil, 'Orphan']])
-      db[:comments].import(%i[id post_id body], [[1, 1, 'Nice']])
+      db[:comments].import(%i[id post_id body], [[1, 1, 'Nice'], [2, nil, 'Spam']])
     end
   end
 
@@ -46,43 +46,52 @@ RSpec.describe LowData::DataExpression do
   after { LowData.database = nil }
 
   describe '+' do
-    it 'keeps every row of the table holding the foreign key when it is on the right' do
-      expect(repository.relationship.sql).to eq(
-        'SELECT `users`.`username`, `posts`.`title` FROM `users` RIGHT JOIN `posts` ON (`posts`.`user_id` = `users`.`id`)'
+    it 'starts from the table holding the foreign key and left joins the table it points to' do
+      expect(repository.lookup.sql).to eq(
+        'SELECT `users`.`username`, `posts`.`title` FROM `posts` LEFT JOIN `users` ON (`posts`.`user_id` = `users`.`id`)'
       )
     end
 
-    it 'keeps every row of the table holding the foreign key when it is on the left' do
-      expect(repository.relationship_reversed.sql).to eq(
-        'SELECT `posts`.`title`, `users`.`username` FROM `posts` LEFT JOIN `users` ON (`posts`.`user_id` = `users`.`id`)'
-      )
-    end
-
-    it 'returns the same rows in either order' do
+    it 'returns every row of the subject once, in either order' do
       expected = [
         { username: 'alice', title: 'Hello' },
         { username: 'bob', title: 'World' },
         { username: nil, title: 'Orphan' }
       ]
 
-      expect(repository.relationship.to_a).to match_array(expected)
-      expect(repository.relationship_reversed.to_a).to match_array(expected)
+      expect(repository.lookup.to_a).to match_array(expected)
+      expect(repository.lookup_reversed.to_a).to match_array(expected)
     end
 
-    it 'chains through each foreign key' do
-      expect(repository.relationship_chained.sql).to eq(
-        'SELECT `users`.`username`, `posts`.`title`, `comments`.`body` FROM `users` ' \
-        'RIGHT JOIN `posts` ON (`posts`.`user_id` = `users`.`id`) ' \
-        'RIGHT JOIN `comments` ON (`comments`.`post_id` = `posts`.`id`)'
+    it 'selects columns in the order the tables were written' do
+      expect(repository.lookup_reversed.sql).to start_with('SELECT `posts`.`title`, `users`.`username` FROM `posts`')
+    end
+
+    it 'follows foreign keys up from the subject' do
+      expect(repository.lookup_chained.sql).to eq(
+        'SELECT `users`.`username`, `posts`.`title`, `comments`.`body` FROM `comments` ' \
+        'LEFT JOIN `posts` ON (`comments`.`post_id` = `posts`.`id`) ' \
+        'LEFT JOIN `users` ON (`posts`.`user_id` = `users`.`id`)'
       )
     end
 
-    it 'returns the rows of the table furthest down the foreign keys in any order' do
-      expected = [{ username: 'alice', title: 'Hello', body: 'Nice' }]
+    it 'returns every row of the subject once in any order' do
+      expected = [
+        { username: 'alice', title: 'Hello', body: 'Nice' },
+        { username: nil, title: nil, body: 'Spam' }
+      ]
 
-      expect(repository.relationship_chained.to_a).to match_array(expected)
-      expect(repository.relationship_chained_reversed.to_a).to match_array(expected)
-      expect(repository.relationship_chained_middle.to_a).to match_array(expected)
+      expect(repository.lookup_chained.to_a).to match_array(expected)
+      expect(repository.lookup_chained_reversed.to_a).to match_array(expected)
+      expect(repository.lookup_chained_middle.to_a).to match_array(expected)
+    end
+
+    it 'can be joined with other operators' do
+      expect(repository.lookup_then_left.to_a).to contain_exactly(
+        { username: 'alice', title: 'Hello', body: 'Nice' },
+        { username: 'bob', title: 'World', body: nil },
+        { username: nil, title: 'Orphan', body: nil }
+      )
     end
 
     it 'keeps every post with explicit joins' do
@@ -91,6 +100,28 @@ RSpec.describe LowData::DataExpression do
         { username: 'bob', title: 'World', body: nil },
         { username: nil, title: 'Orphan', body: nil }
       )
+    end
+
+    it 'raises when two tables point to the same table' do
+      expect { repository.lookup_shared.sql }.to raise_error(
+        LowData::JoinError, /posts and reviews both point to users, so \+ has no single table to keep/
+      )
+    end
+
+    it 'raises when no foreign key links the tables' do
+      expect { repository.lookup_unlinked.sql }.to raise_error(LowData::JoinError, /No foreign key links users to tags/)
+    end
+
+    it 'raises when more than one foreign key links the tables' do
+      expect { repository.lookup_many_keys.sql }.to raise_error(LowData::JoinError, /More than one foreign key/)
+    end
+
+    it 'raises on a self join' do
+      expect { repository.lookup_self.sql }.to raise_error(LowData::JoinError, /Can't join users to itself/)
+    end
+
+    it 'raises when following other joins' do
+      expect { repository.lookup_after_join.sql }.to raise_error(LowData::JoinError, /Put \+ joins first/)
     end
   end
 

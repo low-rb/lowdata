@@ -5,9 +5,6 @@ source 'https://rubygems.org'
 # Specify your gem's dependencies in lowdata.gemspec
 gemspec
 
-# Unreleased + and & operators.
-gem 'expressions', path: '../expressions'
-
 group :development do
   gem 'irb'
   gem 'rack'

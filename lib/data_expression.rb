@@ -10,16 +10,28 @@ class LowData
   #   Users[:username] <=> Posts[:title] # Full outer join.
   #   Table[:username, :title]           # Inverted; the repository's table joined to whichever tables own the columns.
   class DataExpression < ::Expressions::Expression
-    # A table with the columns to select, the tables nested in its brackets and the filters on its rows.
-    Source = ::Data.define(:table, :columns, :nested, :filters) do
-      def initialize(table:, columns:, nested: [], filters: {})
+    # The filters in a table's round brackets: `Posts(published: true) { views > 100 }`. See FilterCompiler.
+    Filter = ::Data.define(:values, :conditions, :related) do
+      def initialize(values: {}, conditions: [], related: [])
+        super
+      end
+
+      def merge(other)
+        with(values: values.merge(other.values), conditions: conditions + other.conditions, related: related + other.related)
+      end
+    end
+    # A table in another table's round brackets, keeping rows with `count` related rows: `Users(Posts => 3..)`.
+    Related = ::Data.define(:key, :source, :count)
+    # A table with the columns to select, the tables nested in its brackets and the filter on its rows.
+    Source = ::Data.define(:table, :columns, :nested, :filter) do
+      def initialize(table:, columns:, nested: [], filter: Filter.new)
         super
       end
     end
     # A table nested in another table's brackets, under an optional key: `Reviews[:rating, author: Users[:username]]`.
     Nested = ::Data.define(:key, :node)
     Join = ::Data.define(:type, :left, :right)
-    Inversion = ::Data.define(:table, :columns)
+    Inversion = ::Data.define(:table, :columns, :filter)
 
     JOIN_HOOKS = { add: :nest, intersect: :inner, lt: :left, gt: :right, compare: :full }.freeze
 

@@ -11,6 +11,7 @@ class LowData
 
       @database = database
       @schema = Schema.new(database:)
+      @filters = FilterCompiler.new(database:, schema: @schema)
     end
 
     def compile(node:)
@@ -25,7 +26,8 @@ class LowData
 
     def compile_inversion(node:)
       tree, selections = Inversion.new(schema: @schema).resolve(node:)
-      build(node: tree, sources: []).select(*selections)
+      sources = []
+      filter(dataset: build(node: tree, sources:), sources:).select(*selections)
     end
 
     def build(node:, sources:)
@@ -61,8 +63,7 @@ class LowData
 
     # Every table's filters go in the WHERE clause, so they apply to the joined rows.
     def filter(dataset:, sources:)
-      conditions = sources.flat_map { |source| source.filters.map { |column, value| [Sequel[source.table][column], value] } }
-      conditions.empty? ? dataset : dataset.where(conditions.to_h)
+      sources.reduce(dataset) { |filtered, source| @filters.apply(dataset: filtered, source:) }
     end
 
     def selections(source:)

@@ -16,6 +16,7 @@ class LowData
 
       @database = database
       @schema = Schema.new(database:)
+      @filters = FilterCompiler.new(database:, schema: @schema)
     end
 
     def load(node:)
@@ -26,8 +27,7 @@ class LowData
     private
 
     def fetch(node:, filter: nil)
-      dataset = @database[node.source.table].select(*select_columns(node:))
-      dataset = dataset.where(node.source.filters) if node.source.filters.any?
+      dataset = @filters.apply(dataset: @database[node.source.table].select(*select_columns(node:)), source: node.source)
       filter ? dataset.where(filter).all : dataset.all
     end
 

@@ -10,7 +10,7 @@ class LowData
     # Returns the join tree and the columns to select, in the order they were asked for.
     def resolve(node:)
       owners = node.columns.to_h { |column| [column, owner(table: node.table, column:)] }
-      base = DataExpression::Source.new(table: node.table, columns: [])
+      base = DataExpression::Source.new(table: node.table, columns: [], filter: node.filter)
 
       tree = (owners.values.uniq - [node.table]).reduce(base) do |left, table|
         DataExpression::Join.new(type: :left, left:, right: DataExpression::Source.new(table:, columns: []))

@@ -19,6 +19,21 @@ class LowData
       chain(operands: operands(node:).map { |operand| build(node: operand) })
     end
 
+    # Returns the nested key and Link for a child table. On the "one" side a key matching a foreign key column picks it,
+    # so `author:` follows `author_id`. FilterCompiler links related tables the same way.
+    def link_to(parent:, child:, key:)
+      to_one = @schema.links(from: parent, to: child)
+      named = named_link(links: to_one, key:)
+      return one(parent:, child:, link: named, key:) if named
+
+      links = to_one + @schema.links(from: child, to: parent)
+      raise JoinError, "No foreign key links #{child} to #{parent}" if links.empty?
+      raise JoinError, many_keys_message(parent:, child:, to_one:) if links.length > 1
+      return one(parent:, child:, link: links.first, key:) if to_one.any?
+
+      many(parent:, child:, link: links.first, key:)
+    end
+
     private
 
     # A + chain is left deep, and each operand is a table, a bracketed table or a parenthesised + chain.
@@ -92,21 +107,6 @@ class LowData
 
     def linked?(table, other)
       @schema.links(from: table, to: other).any? || @schema.links(from: other, to: table).any?
-    end
-
-    # Returns the nested key and Link for a child table. On the "one" side a key matching a foreign key column picks it,
-    # so `author:` follows `author_id`.
-    def link_to(parent:, child:, key:)
-      to_one = @schema.links(from: parent, to: child)
-      named = named_link(links: to_one, key:)
-      return one(parent:, child:, link: named, key:) if named
-
-      links = to_one + @schema.links(from: child, to: parent)
-      raise JoinError, "No foreign key links #{child} to #{parent}" if links.empty?
-      raise JoinError, many_keys_message(parent:, child:, to_one:) if links.length > 1
-      return one(parent:, child:, link: links.first, key:) if to_one.any?
-
-      many(parent:, child:, link: links.first, key:)
     end
 
     def named_link(links:, key:)

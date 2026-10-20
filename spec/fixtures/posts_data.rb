@@ -27,13 +27,40 @@ class PostsData < LowData
   def named_unmatched = Reviews[:rating, writer: Users[:username]]
   def duplicate_keys = Users[:username, Posts[:title], Posts[:id]]
   def bracket_in_join = Users[:username, Posts[:title]] & Comments[:body]
-  def filter_range = Posts[:title, views: 100..]
-  def filter_upper = Posts[:title, views: ...100]
-  def filter_in = Posts[:title, title: %w[Hello Orphan]]
-  def filter_nil = Posts[:title, user_id: nil]
-  def filter_joined = Users[:username] & Posts[:title, views: 100..]
-  def filter_nested = Users[:username, Posts[:title, views: 100..]]
-  def filter_subject = Users[:username, Posts[:title], username: 'alice']
+  def filter_range = Posts(views: 100..)[:title]
+  def filter_upper = Posts(views: ...100)[:title]
+  def filter_in = Posts(title: %w[Hello Orphan])[:title]
+  def filter_nil = Posts(user_id: nil)[:title]
+  def filter_joined = Users[:username] & Posts(views: 100..)[:title]
+  def filter_nested = Users[:username, Posts(views: 100..)[:title]]
+  def filter_subject = Users(username: 'alice')[:username, Posts[:title]]
+  def filter_empty = Posts()[:title]
+  def filter_in_square_brackets = Posts[:title, views: 100..]
+  def filter_typo = Psots(views: 100..)[:title]
+  def filter_positional = Posts(:title)
+  def filter_inverted = Table(views: 100..)[:username, :title]
+  def block = Posts { views > 100 }[:title]
+  def block_or = Posts { (views > 100) | (views < 20) }[:title]
+  def block_local(minimum) = Posts { views > minimum }[:title]
+  def block_self = Posts { |post| post.views > minimum_views }[:title]
+  def block_and_values = Posts(user_id: 1..) { views < 100 }[:title]
+  def block_joined = Users[:username] & Posts { views > 100 }[:title]
+  def related = Users(Posts)[:username]
+  def related_filtered = Users(Posts(views: 100..))[:username]
+  def related_none = Users(~Posts)[:username]
+  def related_none_filtered = Users(~Posts(views: 100..))[:username]
+  def related_count = Posts(Likes => 2..)[:title]
+  def related_count_exact = Users(Likes => 1)[:username]
+  def related_count_zero = Users(Posts => 0)[:username]
+  def related_deep = Users(Posts(Likes))[:username]
+  def related_named = Reviews(author: Users(username: 'alice'))[:rating]
+  def related_named_other = Reviews(editor: Users(username: 'alice'))[:rating]
+  def related_ambiguous = Reviews(Users)[:rating]
+  def related_self = Users(Users)[:username]
+  def related_joined = Users(Likes)[:username] & Posts[:title]
+  def related_negated_count = Users(~Posts => 1)[:username]
+  def related_negated_columns = (~Posts)[:title]
+  def related_nested = Users[:username, Posts(Likes)[:title]]
   def explicit_posts = (Users[:username] > Posts[:title]) < Comments[:body]
   def full = Users[:username] <=> Posts[:title]
   def inner = Users[:username] & Posts[:title]
@@ -53,4 +80,13 @@ class PostsData < LowData
   def inverted_unrelated = Table[:name]
   def inverted_missing = Table[:missing]
   def inverted_join = Table[:title] & Users[:username]
+
+  def reused
+    popular = Posts(views: 100..)
+    Users(popular)[:username, popular[:title]]
+  end
+
+  private
+
+  def minimum_views = 100
 end

@@ -247,6 +247,135 @@ RSpec.describe LowData::DataExpression do
     it 'filters the subject' do
       expect(repository.filter_subject.to_a).to eq([{ username: 'alice', posts: [{ title: 'Hello' }] }])
     end
+
+    it 'filters nothing with empty round brackets' do
+      expect(repository.filter_empty.sql).to eq('SELECT `posts`.`title` FROM `posts`')
+    end
+
+    it 'filters Table()' do
+      expect(repository.filter_inverted.to_a).to eq([{ username: 'bob', title: 'World' }])
+    end
+
+    it 'raises for filters in square brackets' do
+      expect { repository.filter_in_square_brackets }.to raise_error(ArgumentError, /Filters go in round brackets/)
+    end
+
+    it 'raises for arguments that are not filters or tables' do
+      expect { repository.filter_positional }.to raise_error(ArgumentError, /Round brackets take filters and tables/)
+    end
+
+    it 'raises NoMethodError for names that are not tables' do
+      expect { repository.filter_typo }.to raise_error(NoMethodError, /Psots/)
+      expect(repository).to respond_to(:Posts)
+      expect(repository).not_to respond_to(:Psots)
+    end
+
+    it 'raises without a database' do
+      LowData.database = nil
+      expect { repository.filter_range }.to raise_error(LowData::ConfigError)
+    end
+  end
+
+  describe 'blocks' do
+    it 'filters by a condition' do
+      expect(repository.block.sql).to eq('SELECT `posts`.`title` FROM `posts` WHERE (`posts`.`views` > 100)')
+    end
+
+    it 'combines conditions with |' do
+      expect(repository.block_or.to_a).to contain_exactly({ title: 'Hello' }, { title: 'World' })
+    end
+
+    it 'reads local variables' do
+      expect(repository.block_local(5).to_a).to contain_exactly({ title: 'Hello' }, { title: 'World' })
+      expect(repository.block_local(100).to_a).to eq([{ title: 'World' }])
+    end
+
+    it 'keeps self with a block argument' do
+      expect(repository.block_self.to_a).to eq([{ title: 'World' }])
+    end
+
+    it 'combines with filters in round brackets' do
+      expect(repository.block_and_values.to_a).to eq([{ title: 'Hello' }])
+    end
+
+    it 'qualifies columns with the table in joins' do
+      expect(repository.block_joined.sql).to eq(
+        'SELECT `users`.`username`, `posts`.`title` FROM `users` INNER JOIN `posts` ON (`posts`.`user_id` = `users`.`id`) ' \
+        'WHERE (`posts`.`views` > 100)'
+      )
+    end
+  end
+
+  describe 'related tables' do
+    it 'keeps rows with related rows' do
+      expect(repository.related.sql).to eq(
+        'SELECT `users`.`username` FROM `users` WHERE (EXISTS (SELECT 1 FROM `posts` WHERE (`posts`.`user_id` = `users`.`id`)))'
+      )
+      expect(repository.related.to_a).to contain_exactly({ username: 'alice' }, { username: 'bob' })
+    end
+
+    it 'keeps rows with filtered related rows' do
+      expect(repository.related_filtered.to_a).to eq([{ username: 'bob' }])
+    end
+
+    it 'keeps rows without related rows with ~' do
+      expect(repository.related_none.to_a).to eq([{ username: 'carol' }])
+      expect(repository.related_none_filtered.to_a).to contain_exactly({ username: 'alice' }, { username: 'carol' })
+    end
+
+    it 'keeps rows by how many related rows they have' do
+      expect(repository.related_count.sql).to include('((SELECT count(*) FROM `likes` WHERE (`likes`.`post_id` = `posts`.`id`)) >= 2)')
+      expect(repository.related_count.to_a).to eq([{ title: 'Hello' }])
+      expect(repository.related_count_exact.to_a).to contain_exactly({ username: 'bob' }, { username: 'carol' })
+    end
+
+    it 'uses NOT EXISTS for a count of zero' do
+      expect(repository.related_count_zero.sql).to include('NOT (EXISTS')
+      expect(repository.related_count_zero.to_a).to eq([{ username: 'carol' }])
+    end
+
+    it 'filters through related tables of related tables' do
+      expect(repository.related_deep.to_a).to eq([{ username: 'alice' }])
+    end
+
+    it 'follows the foreign key a name picks' do
+      expect(repository.related_named.to_a).to eq([{ rating: 5 }])
+      expect(repository.related_named_other.to_a).to eq([])
+    end
+
+    it 'filters joined rows' do
+      expect(repository.related_joined.to_a).to eq([{ username: 'bob', title: 'World' }])
+    end
+
+    it 'filters nested rows' do
+      expect(repository.related_nested.to_a).to contain_exactly(
+        { username: 'alice', posts: [{ title: 'Hello' }] },
+        { username: 'bob', posts: [] },
+        { username: 'carol', posts: [] }
+      )
+    end
+
+    it 'filters parents and nested rows with one reused filter' do
+      expect(repository.reused.to_a).to eq([{ username: 'bob', posts: [{ title: 'World' }] }])
+    end
+
+    it 'raises when more than one foreign key links the tables' do
+      expect { repository.related_ambiguous.sql }.to raise_error(
+        LowData::JoinError, /More than one foreign key links reviews and users. Name the one to follow/
+      )
+    end
+
+    it 'raises when a table filters by its own rows' do
+      expect { repository.related_self.sql }.to raise_error(LowData::JoinError, /Can't filter users by its own rows/)
+    end
+
+    it 'raises for ~ with a count' do
+      expect { repository.related_negated_count }.to raise_error(ArgumentError, /not both/)
+    end
+
+    it 'raises for ~ with columns' do
+      expect { repository.related_negated_columns }.to raise_error(ArgumentError, /can't select columns/)
+    end
   end
 
   describe '<=>' do

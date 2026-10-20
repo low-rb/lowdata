@@ -1,6 +1,6 @@
 # ADR 0002: Nesting, naming and filtering inside brackets
 
-- **Status:** Accepted
+- **Status:** Accepted. Filters are superseded by [ADR 0003](0003-round-bracket-filters.md)
 - **Date:** 2026-10-20
 
 ## Context

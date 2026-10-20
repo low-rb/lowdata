@@ -60,18 +60,41 @@ Reviews[:rating, author: Users[:username], editor: Users[:username]]
 
 #### Filters
 
-A keyword with any other value filters that table's rows, using Ruby values:
+Round brackets after a table filter its rows, and square brackets then choose what to return. Inside a repository's methods, keywords filter by Ruby values:
 
 ```ruby
-Posts[:title, published: true]          # WHERE published = TRUE
-Posts[:title, views: 100..]             # WHERE views >= 100
-Posts[:title, status: %w[draft live]]   # WHERE status IN ('draft', 'live')
-Posts[:title, deleted_at: nil]          # WHERE deleted_at IS NULL
+Posts(published: true)[:title]          # WHERE published = TRUE
+Posts(views: 100..)[:title]             # WHERE views >= 100
+Posts(status: %w[draft live])[:title]   # WHERE status IN ('draft', 'live')
+Posts(deleted_at: nil)[:title]          # WHERE deleted_at IS NULL
 ```
 
-On a nested table a filter only filters the nested rows: `Users[:username, Posts[:title, published: true]]` returns every user, each with their published posts. In the SQL joins below, filters go in the `WHERE` clause.
+A block holds conditions that need more than a value. It's a [Sequel virtual row](https://sequel.jeremyevans.net/rdoc/files/doc/virtual_rows_rdoc.html), so a bare name is a column:
 
-Ruby needs positional arguments before keyword arguments, so write columns and unnamed tables first: `Posts[:title, Likes[], published: true]`.
+```ruby
+Posts { (views > 100) | featured }[:title]   # WHERE views > 100 OR featured
+Posts(published: true) { views > minimum }[:title]
+```
+
+Combine conditions with `&` and `|`, not `&&` and `||`: Ruby can't overload `&&` and `||`, so `views > 100 && featured` silently becomes `featured`. The block can read local variables, but not the repository's methods or instance variables unless it takes an argument: `Posts { |post| post.views > minimum_views }`.
+
+A table in round brackets keeps the rows that have related rows in it:
+
+```ruby
+Users(Posts(published: true))[:username]    # users with a published post
+Users(~Posts)[:username]                    # users with no posts
+Users(Posts => 3..)[:username]              # users with 3 or more posts
+Reviews(author: Users(username: 'alice'))[:rating]   # a name picks the foreign key to follow
+```
+
+On a nested table a filter only filters the nested rows: `Users[:username, Posts(published: true)[:title]]` returns every user, each with their published posts. To filter both, reuse the filtered table:
+
+```ruby
+published = Posts(published: true)
+Users(published)[:username, published[:title]]   # only users with published posts, and only those posts
+```
+
+In the SQL joins below, filters go in the `WHERE` clause. To split a long expression over several lines, break inside the brackets and keep `) {` and `}[` together. A `[` at the start of a line starts a new array, silently dropping the columns.
 
 ### Join Operators
 

@@ -194,6 +194,24 @@ The `ON` clause comes from the foreign keys in your database.
 
 Ruby evaluates `&` before `<` and `>`, so add parentheses when mixing operators: `(Users[] < Posts[]) & Comments[]`. `+` returns nested data rather than rows, so its result can't be joined, but a join can be [nested with `+`](#nesting-joins).
 
+## Renaming
+
+Rows are hashes, so when joined tables share a column name, only one value can be returned. A keyword with a symbol returns a column under a new name:
+
+```ruby
+Users[:username, user_id: :id] & Posts[:title, post_id: :id]
+# SELECT users.username, users.id AS user_id, posts.title, posts.id AS post_id FROM users INNER JOIN posts ON (posts.user_id = users.id)
+# => [{ username: 'alice', user_id: 1, title: 'Hello', post_id: 1 }]
+
+Posts[:id, headline: :title]
+# SELECT posts.id, posts.title AS headline FROM posts
+# => [{ id: 1, headline: 'Hello' }]
+```
+
+As with [named nested tables](#inline-nesting), the key is what you get back and the value is where it comes from. Renames work in nested tables, joins and `Table[]`, and they go last in the brackets, because Ruby puts keywords after other arguments: `Users[Posts[:title], handle: :username]`.
+
+A rename written backwards raises with the fix: `Posts[title: :headline]` raises "posts has no headline column. To rename title, write headline: :title". Sort by the column, not the new name: `Posts[headline: :title] ^ Col[:title]`.
+
 ## Data Inversion
 
 Data Expressions can invert the usual database query logic; instead of building a query of what we want from the database, we build the table we want and let the expression build the query.

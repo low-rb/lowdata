@@ -86,9 +86,7 @@ class LowData
     end
 
     def with_children(node:, children:)
-      children = node.children + children
-      check_keys!(table: node.tables.join(', '), children:)
-      node.with(children:)
+      node.with(children: node.children + children).tap { |linked| check_keys!(node: linked) }
     end
 
     def check_duplicates!(operands:)
@@ -104,10 +102,14 @@ class LowData
       raise JoinError, format(MULTIPLE_PATHS_MESSAGE, tables: tables.join(', ')) if edges.length > operands.length - 1
     end
 
-    def check_keys!(table:, children:)
-      keys = children.map(&:key)
+    # Each nested table needs its own key, which a renamed column can't also use.
+    def check_keys!(node:)
+      keys = node.children.map(&:key)
       duplicate = keys.find { |key| keys.count(key) > 1 }
-      raise JoinError, "Two tables nest in #{table} as #{duplicate}. Name them, e.g. author: Users[:username]" if duplicate
+      raise JoinError, "Two tables nest in #{node.tables.join(', ')} as #{duplicate}. Name them, e.g. author: Users[:username]" if duplicate
+
+      renamed = (keys & (node.join ? [] : node.source.renames.keys)).first
+      raise JoinError, "#{node.tables.join(', ')} returns #{renamed} as both a renamed column and a nested table. Rename one" if renamed
     end
 
     def named_link(links:, key:)

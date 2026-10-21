@@ -38,6 +38,17 @@ class LowData
       end
     end
 
+    # A renamed column must exist and its new name mustn't, so a rename written backwards, `title: :headline`, raises.
+    def check_renames!(table:, renames:)
+      columns = columns(table:)
+
+      renames.each do |name, column|
+        raise ArgumentError, backwards_rename_message(table:, name:, column:) if columns.include?(name) && !columns.include?(column)
+        raise ArgumentError, "#{table} has no #{column} column to rename" unless columns.include?(column)
+        raise ArgumentError, "#{table} already has a #{name} column, so #{column} can't be renamed to it" if columns.include?(name)
+      end
+    end
+
     def linked?(table, other)
       links(from: table, to: other).any? || links(from: other, to: table).any?
     end
@@ -50,6 +61,10 @@ class LowData
     end
 
     private
+
+    def backwards_rename_message(table:, name:, column:)
+      "#{table} has no #{column} column. To rename #{name}, write #{column}: :#{name}"
+    end
 
     def schema(table:)
       @schemas[table] ||= @database.schema(table)

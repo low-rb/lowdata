@@ -20,15 +20,17 @@ class LowData
     #   Posts[:title]                              # A symbol is a column. No columns selects every column.
     #   Users[:username, Posts[:title]]            # A data expression is a nested table.
     #   Reviews[:rating, author: Users[:username]] # A keyword with a data expression names a nested table.
+    #   Posts[:id, headline: :title]               # A keyword with a symbol renames a column.
     def [](*arguments, **keywords)
       raise ArgumentError, "~#{LowData.constant_name(table)} filters by related rows, so it can't select columns" if negated
       return inverted(arguments:, keywords:) if @inverted
 
       expressions, columns = arguments.partition { |argument| argument.is_a?(DataExpression) }
       check_columns!(columns:)
-      nested = nested(pairs: expressions.map { |expression| [nil, expression] } + named(keywords:))
+      named, renames = named(keywords:, columns:)
+      nested = nested(pairs: expressions.map { |expression| [nil, expression] } + named)
 
-      DataExpression.new(node: DataExpression::Source.new(table:, columns:, nested:, filter:))
+      DataExpression.new(node: DataExpression::Source.new(table:, columns:, renames:, nested:, filter:))
     end
 
     # Each argument's type decides its meaning:
@@ -76,11 +78,19 @@ class LowData
       DataExpression::Related.new(key:, source: reference.source, count: count || (reference.negated ? 0 : 1..))
     end
 
-    def named(keywords:)
-      named, filters = keywords.partition { |_key, value| value.is_a?(DataExpression) }
+    # Returns the named nested tables and the renamed columns.
+    def named(keywords:, columns:)
+      named, others = keywords.partition { |_key, value| value.is_a?(DataExpression) }
+      renames, filters = others.partition { |_key, value| value.is_a?(Symbol) }
       raise ArgumentError, format(FILTER_KEYWORD_MESSAGE, keywords: filters.to_h) if filters.any?
 
-      named
+      check_renames!(names: columns + named.map(&:first), renames: renames.to_h)
+      [named, renames.to_h]
+    end
+
+    def check_renames!(names:, renames:)
+      duplicate = (renames.keys & names).first
+      raise ArgumentError, "#{LowData.constant_name(table)}[] returns #{duplicate} twice. Name each value once" if duplicate
     end
 
     def nested(pairs:)
@@ -89,9 +99,10 @@ class LowData
 
     def inverted(arguments:, keywords:)
       check_columns!(columns: arguments)
-      raise ArgumentError, 'Table[] takes column names only' if keywords.any?
+      raise ArgumentError, 'Table[] takes column names only, and renames such as headline: :title' unless keywords.values.all?(Symbol)
 
-      DataExpression.new(node: DataExpression::Inversion.new(table:, columns: arguments, filter:))
+      check_renames!(names: arguments, renames: keywords)
+      DataExpression.new(node: DataExpression::Inversion.new(table:, columns: arguments, renames: keywords, filter:))
     end
 
     def check_columns!(columns:)

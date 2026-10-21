@@ -25,18 +25,30 @@ class LowData
     end
     # A table in another table's round brackets, keeping rows with `count` related rows: `Users(Posts => 3..)`.
     Related = ::Data.define(:key, :source, :count)
-    # A table with the columns to select, the tables nested in its brackets and the filter on its rows.
-    Source = ::Data.define(:table, :columns, :nested, :filter) do
-      def initialize(table:, columns:, nested: [], filter: Filter.new)
+    # A table with the columns to select, the columns renamed (`headline: :title`), the tables nested in its brackets and
+    # the filter on its rows.
+    Source = ::Data.define(:table, :columns, :renames, :nested, :filter) do
+      def initialize(table:, columns:, renames: {}, nested: [], filter: Filter.new)
         super
       end
+    end
+
+    class Source
+      # No columns or renames selects every column.
+      def every_column? = columns.empty? && renames.empty?
+
+      # The keys of each row, as asked for.
+      def names = columns + renames.keys
+
+      # The renamed columns, as `posts.title AS headline`.
+      def aliases = renames.map { |name, column| Sequel[table][column].as(name) }
     end
     # A table nested in another table's brackets, under an optional key: `Reviews[:rating, author: Users[:username]]`.
     Nested = ::Data.define(:key, :node)
     Join = ::Data.define(:type, :left, :right) do
       def nest? = type == :nest
     end
-    Inversion = ::Data.define(:table, :columns, :filter)
+    Inversion = ::Data.define(:table, :columns, :renames, :filter)
     # A node sorted by `keys` (Col::Key) with `rows` (Rows) kept: `Posts[:title] ^ -Col[:views] * 10`.
     Ordered = ::Data.define(:node, :keys, :rows)
 

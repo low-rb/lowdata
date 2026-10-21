@@ -84,9 +84,10 @@ class LowData
     end
 
     def selections(source:)
-      return [Sequel[source.table].*] if source.columns.empty?
+      return [Sequel[source.table].*] if source.every_column?
 
-      source.columns.map { |column| Sequel[source.table][column] }
+      @schema.check_renames!(table: source.table, renames: source.renames)
+      source.columns.map { |column| Sequel[source.table][column] } + source.aliases
     end
 
     def join_conditions(left_tables:, right_table:)

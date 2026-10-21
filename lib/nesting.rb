@@ -79,6 +79,7 @@ class LowData
     end
 
     def table_dataset(node:)
+      @schema.check_renames!(table: node.source.table, renames: node.source.renames)
       @filters.apply(dataset: @database[node.source.table].select(*select_columns(node:)), source: node.source)
     end
 
@@ -113,10 +114,11 @@ class LowData
 
     # The columns asked for, plus the columns each link needs.
     def select_columns(node:)
-      return [Sequel[node.source.table].*] if node.source.columns.empty?
+      source = node.source
+      return [Sequel[source.table].*] if source.every_column?
 
       link_columns = [node.link&.child_column, *node.children.map { |child| child.link.parent_column }].compact
-      (node.source.columns + link_columns).uniq
+      (source.columns + link_columns).uniq + source.aliases
     end
 
     # Turns fetched rows into output hashes: the columns asked for, plus each child nested under its key.
@@ -133,7 +135,7 @@ class LowData
     def columns(node:, row:)
       return row.except(LINK, ROW_NUMBER, *node.children.map { |child| child.link.parent_key }) if node.join
 
-      node.source.columns.empty? ? row.except(ROW_NUMBER) : row.slice(*node.source.columns)
+      node.source.every_column? ? row.except(ROW_NUMBER) : row.slice(*node.source.names)
     end
 
     def matches(child:, row:, nested:)

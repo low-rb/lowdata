@@ -70,8 +70,23 @@ RSpec.describe LowData::DataExpression do
       expect(queries.length).to eq(3)
     end
 
-    it 'raises for SQL because it runs more than one query' do
-      expect { repository.nest_chain.sql }.to raise_error(LowData::Error, /no single SQL query/)
+    it 'returns the SQL of each query, parents first' do
+      expect(repository.nest_chain.sql).to eq(
+        "SELECT `username`, `id` FROM `users`;\n" \
+        "SELECT `title`, `user_id`, `id` FROM `posts` WHERE (`user_id` IN (...));\n" \
+        'SELECT `body`, `post_id` FROM `comments` WHERE (`post_id` IN (...))'
+      )
+    end
+
+    it 'returns the SQL of a nested join and the tables under a join' do
+      expect(repository.nest_join_limited.sql.split(";\n").last).to include(
+        'PARTITION BY `posts`.`user_id`', '(`posts`.`user_id` IN (...))'
+      )
+      expect(repository.nest_after_join.sql.split(";\n").first).to include('`posts`.`id` AS \'lowdata_posts_id\'')
+    end
+
+    it 'raises for a dataset because it runs more than one query' do
+      expect { repository.nest_chain.dataset }.to raise_error(LowData::Error, /no single dataset/)
     end
 
     it 'raises when foreign keys link the tables by more than one path' do

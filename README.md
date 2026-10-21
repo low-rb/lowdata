@@ -55,7 +55,7 @@ Users[:username] + Posts[:title] + Comments[:body]
 # ]
 ```
 
-Every row of the first table appears exactly once, so rows never repeat or drop out, and sibling tables such as `Posts + Comments + Likes` nest side by side. The tables after the first can be written in any order. `+` runs one query per table, so call `to_a` rather than `sql`. It raises when foreign keys link the tables by more than one path, or when more than one foreign key links two tables.
+Every row of the first table appears exactly once, so rows never repeat or drop out, and sibling tables such as `Posts + Comments + Likes` nest side by side. The tables after the first can be written in any order. `+` runs one query per table, so `sql` returns each query, separated by semicolons, and shows the values each query takes from the rows above it as `IN (...)`. It raises when foreign keys link the tables by more than one path, or when more than one foreign key links two tables.
 
 ### Inline nesting
 

@@ -49,15 +49,19 @@ class LowData
     end
 
     SORT_MESSAGE = 'Sort by columns with Col[], e.g. Posts[:title] ^ Col[:views], not %<value>s'
-    NESTED_SQL_MESSAGE = '+ loads nested data with one query per table, so it has no single SQL query. Call to_a instead'
+    NESTED_DATASET_MESSAGE = 'Nested tables load with one query per table, so they have no single dataset. Call sql to see ' \
+                             'each query, or to_a to load them'
 
     def dataset(database: LowData.database)
-      raise Error, NESTED_SQL_MESSAGE if nested?
+      raise Error, NESTED_DATASET_MESSAGE if nested?
 
       QueryCompiler.new(database:).compile(node: @node)
     end
 
+    # Nested tables load with one query per table, so their SQL is each query, separated by semicolons.
     def sql(database: LowData.database)
+      return Nesting.new(database:).sql(node: @node).join(";\n") if nested?
+
       dataset(database:).sql
     end
 

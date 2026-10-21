@@ -37,6 +37,8 @@ class LowData
     end
 
     ROW_NUMBER = :lowdata_row_number
+    # Stands in for the parent values a nested table's query is filtered by, which aren't known until the parents load.
+    PARENT_VALUES = Sequel.lit('(...)')
     # A nested join's link value, selected under its own name so it can't clash with the joined columns.
     LINK = :lowdata_link
 
@@ -52,18 +54,28 @@ class LowData
 
     def load(node:)
       root = NestingTree.new(schema: @schema).build(node:)
-      shape(node: root, rows: fetch(node: root))
+      shape(node: root, rows: dataset(node: root).all)
+    end
+
+    # The SQL of each query `load` runs, parents first, without running them. A nested table's query shows the parent
+    # values it's filtered by as `IN (...)`.
+    def sql(node:)
+      queries(node: NestingTree.new(schema: @schema).build(node:)).map(&:sql)
     end
 
     private
 
-    # Fetches a node's rows, or when it's nested, its rows linked to the parents' `values`.
-    def fetch(node:, values: nil)
+    def queries(node:, values: nil)
+      [dataset(node:, values:), *node.children.flat_map { |child| queries(node: child, values: PARENT_VALUES) }]
+    end
+
+    # A node's rows, or when it's nested, its rows linked to the parents' `values`.
+    def dataset(node:, values: nil)
       dataset = node.join ? join_dataset(node:) : table_dataset(node:)
-      dataset = dataset.where(link_column(node:) => values) if values
+      dataset = dataset.where(Sequel::SQL::BooleanExpression.new(:IN, link_column(node:), values)) if values
       return per_parent(node:, dataset:) if values && node.rows
 
-      @orders.apply(dataset:, keys: node.keys, rows: node.rows, tables: node.tables).all
+      @orders.apply(dataset:, keys: node.keys, rows: node.rows, tables: node.tables)
     end
 
     def table_dataset(node:)
@@ -85,7 +97,6 @@ class LowData
     def per_parent(node:, dataset:)
       numbered = dataset.select_append(row_number(node:).as(ROW_NUMBER))
       @database.from(numbered).where(ROW_NUMBER => row_numbers(rows: node.rows)).order(ROW_NUMBER)
-               .all.map { |row| row.except(ROW_NUMBER) }
     end
 
     def row_number(node:)
@@ -120,9 +131,9 @@ class LowData
     end
 
     def columns(node:, row:)
-      return row.except(LINK, *node.children.map { |child| child.link.parent_key }) if node.join
+      return row.except(LINK, ROW_NUMBER, *node.children.map { |child| child.link.parent_key }) if node.join
 
-      node.source.columns.empty? ? row.dup : row.slice(*node.source.columns)
+      node.source.columns.empty? ? row.except(ROW_NUMBER) : row.slice(*node.source.columns)
     end
 
     def matches(child:, row:, nested:)
@@ -135,7 +146,7 @@ class LowData
       values = rows.map { |row| row[child.link.parent_key] }.compact.uniq
       return {} if values.empty?
 
-      child_rows = fetch(node: child, values:)
+      child_rows = dataset(node: child, values:).all
       link_column = child.join ? LINK : child.link.child_column
       child_rows.zip(shape(node: child, rows: child_rows))
                 .group_by { |row, _output| row[link_column] }

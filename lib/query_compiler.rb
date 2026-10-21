@@ -4,7 +4,8 @@ class LowData
   # Compiles a DataExpression join tree into a Sequel dataset, inferring each join's ON clause from foreign keys.
   class QueryCompiler
     INVERSION_JOIN_MESSAGE = "Table[] can't be joined with other expressions"
-    NESTING_JOIN_MESSAGE = 'Nested tables return nested data, so + and tables nested in brackets can\'t be combined with &, <, > or <=>'
+    NESTING_JOIN_MESSAGE = 'Nested tables return nested data, so + and tables nested in brackets can\'t be combined with &, <, > ' \
+                           'or <=>. Nest the join instead, e.g. Users[:username] + (Posts[:title] & Comments[:body])'
     ORDERED_JOIN_MESSAGE = 'Sort and limit after joining, e.g. (Users[] < Posts[]) ^ Col[:username]. Ruby binds ^ tighter ' \
                            'than <, > and <=>, and * and / tighter than every join, so add parentheses around the join'
 
@@ -67,7 +68,7 @@ class LowData
     end
 
     def nesting?(node:)
-      node.is_a?(DataExpression::Join) && node.type == :nest
+      node.is_a?(DataExpression::Join) && node.nest?
     end
 
     def source_dataset(source:, sources:)

@@ -2,7 +2,7 @@
 
 class LowData
   # Builds the tree Nesting loads from an expression. Tables in brackets nest directly under their table, and the
-  # operands of a + chain nest by following foreign keys from the first operand.
+  # operands of a + chain nest by following foreign keys from the first operand. A join nests as flat rows: see NestedJoin.
   class NestingTree
     MULTIPLE_PATHS_MESSAGE = 'Foreign keys link %<tables>s by more than one path, so + has no single way to nest them. ' \
                              'Nest them in brackets instead, e.g. Users[:username, Posts[:title, Likes[]]]'
@@ -16,6 +16,7 @@ class LowData
       raise JoinError, QueryCompiler::INVERSION_JOIN_MESSAGE if node.is_a?(DataExpression::Inversion)
       return build(node: node.node).with(keys: node.keys, rows: node.rows) if node.is_a?(DataExpression::Ordered)
       return bracketed(source: node) if node.is_a?(DataExpression::Source)
+      return Nesting::Node.new(source: NestedJoin.build(node:), key: nil, link: nil, children: []) unless node.nest?
 
       chain(operands: operands(node:).map { |operand| build(node: operand) })
     end
@@ -37,30 +38,34 @@ class LowData
 
     private
 
-    # A + chain is left deep, and each operand is a table, a bracketed table or a parenthesised + chain.
+    # A + chain is left deep, and each operand is a table, a bracketed table, a join or a parenthesised + chain.
     def operands(node:)
-      return [node] unless node.is_a?(DataExpression::Join)
-      raise JoinError, QueryCompiler::NESTING_JOIN_MESSAGE unless node.type == :nest
+      return [node] unless node.is_a?(DataExpression::Join) && node.nest?
 
       operands(node: node.left) + [node.right]
     end
 
     # Tables in brackets nest directly under the table whose brackets they're in.
     def bracketed(source:)
-      children = source.nested.map do |nested|
-        child = build(node: nested.node)
-        key, link = link_to(parent: source.table, child: child.source.table, key: nested.key)
-        child.with(key:, link:)
-      end
+      children = source.nested.map { |nested| linked(parent: source.table, child: build(node: nested.node), key: nested.key) }
 
       with_children(node: Nesting::Node.new(source:, key: nil, link: nil, children: []), children:)
+    end
+
+    # Sets a child's key and link to its parent, and a join's table that links them.
+    def linked(parent:, child:, key:)
+      joined = child.join&.link(parent:, key:, tree: self, schema: @schema)
+      source, key, link = joined || [child.source, *link_to(parent:, child: child.source.table, key:)]
+      child.with(source:, key:, link:)
     end
 
     # Links the operands into a tree from the first. Every operand must be linked, and only by one path.
     def chain(operands:)
       check_duplicates!(operands:)
 
-      edges = operands.combination(2).select { |operand, other| linked?(operand.source.table, other.source.table) }
+      edges = operands.combination(2).select do |operand, other|
+        operand.tables.product(other.tables).any? { |table, other_table| @schema.linked?(table, other_table) }
+      end
       visited = [operands.first]
       root = attach(operand: operands.first, node: operands.first, edges:, visited:)
       check_chain!(operands:, visited:, edges:)
@@ -72,10 +77,10 @@ class LowData
     def attach(operand:, node:, edges:, visited:)
       neighbours = edges.filter_map { |pair| (pair - [operand]).first if pair.include?(operand) } - visited
       visited.concat(neighbours)
+      raise JoinError, NestedJoin::PARENT_MESSAGE if node.join && neighbours.any?
 
       children = neighbours.map do |child|
-        key, link = link_to(parent: node.source.table, child: child.source.table, key: nil)
-        attach(operand: child, node: child.with(key:, link:), edges:, visited:)
+        attach(operand: child, node: linked(parent: node.source.table, child:, key: nil), edges:, visited:)
       end
 
       with_children(node:, children:)
@@ -83,19 +88,19 @@ class LowData
 
     def with_children(node:, children:)
       children = node.children + children
-      check_keys!(table: node.source.table, children:)
+      check_keys!(table: node.tables.join(', '), children:)
       node.with(children:)
     end
 
     def check_duplicates!(operands:)
-      tables = operands.map { |operand| operand.source.table }
+      tables = operands.flat_map(&:tables)
       duplicate = tables.find { |table| tables.count(table) > 1 }
       raise JoinError, "Can't join #{duplicate} to itself. Name each in brackets, e.g. author: Users[:username]" if duplicate
     end
 
     def check_chain!(operands:, visited:, edges:)
-      tables = operands.map { |operand| operand.source.table }
-      unreached = (operands - visited).map { |operand| operand.source.table }
+      tables = operands.flat_map(&:tables)
+      unreached = (operands - visited).flat_map(&:tables)
       raise JoinError, "No foreign key links #{unreached.join(' and ')} to #{(tables - unreached).join(', ')}" if unreached.any?
       raise JoinError, format(MULTIPLE_PATHS_MESSAGE, tables: tables.join(', ')) if edges.length > operands.length - 1
     end
@@ -104,10 +109,6 @@ class LowData
       keys = children.map(&:key)
       duplicate = keys.find { |key| keys.count(key) > 1 }
       raise JoinError, "Two tables nest in #{table} as #{duplicate}. Name them, e.g. author: Users[:username]" if duplicate
-    end
-
-    def linked?(table, other)
-      @schema.links(from: table, to: other).any? || @schema.links(from: other, to: table).any?
     end
 
     def named_link(links:, key:)

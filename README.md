@@ -66,7 +66,7 @@ Users[:username] <=> Posts[:title]
 
 The `ON` clause comes from the foreign keys in your database.
 
-Ruby evaluates `&` before `<` and `>`, so add parentheses when mixing operators: `(Users[] < Posts[]) & Comments[]`. `+` can't be combined with these operators, because it returns nested data rather than rows.
+Ruby evaluates `&` before `<` and `>`, so add parentheses when mixing operators: `(Users[] < Posts[]) & Comments[]`. `+` returns nested data rather than rows, so its result can't be joined, but a join can be [nested with `+`](#nesting-joins).
 
 ## Data Inversion
 
@@ -131,6 +131,45 @@ Reviews[:rating, author: Users[:username], editor: Users[:username]]
 # SELECT username, id FROM users WHERE (id IN (...))
 # SELECT username, id FROM users WHERE (id IN (...))
 # => [{ rating: 5, author: { username: 'alice' }, editor: { username: 'bob' } }]
+```
+
+### Nesting joins
+
+A join nests as flat rows, under the one table in it that links to the parent:
+
+```ruby
+Users[:username] + (Posts[:title] & Comments[:body])
+
+# SELECT username, id FROM users
+# SELECT posts.title, comments.body, posts.user_id AS lowdata_link FROM posts INNER JOIN comments ON (comments.post_id = posts.id) WHERE (posts.user_id IN (...))
+# => [{ username: 'alice', posts: [{ title: 'Hello', body: 'Nice' }] }, { username: 'bob', posts: [] }]
+```
+
+The join keeps the rows its operator keeps, so `<` would also keep posts without comments. A join can also nest in brackets, and filters apply to the joined rows.
+
+A sort or limit inside the parentheses applies to each parent's joined rows, by a column from any table in the join:
+
+```ruby
+Users[:username] + (Posts[:title] & Comments[:body] ^ Col[:body] * 2)
+
+# SELECT username, id FROM users
+# SELECT * FROM (
+#   SELECT posts.title, comments.body, posts.user_id AS lowdata_link,
+#     row_number() OVER (PARTITION BY posts.user_id ORDER BY comments.body) AS lowdata_row_number
+#   FROM posts INNER JOIN comments ON (comments.post_id = posts.id) WHERE (posts.user_id IN (...))
+# ) AS t1 WHERE ((lowdata_row_number >= 1) AND (lowdata_row_number <= 2)) ORDER BY lowdata_row_number
+# => Users, each with their first 2 post and comment rows by comment body
+```
+
+- Ruby runs `*`, then `&`, then `^`, so the example above is `(Posts[:title] & Comments[:body]) ^ (Col[:body] * 2)`.
+- `<`, `>` and `<=>` run after `^`, so those joins need parentheses of their own: `(Posts[] < Comments[]) ^ Col[:body]`.
+- A sort after the closing parenthesis sorts the parents instead.
+
+Only the "many" side can nest a join, because joined rows can repeat the row they link to. Tables can't nest under a join, because it returns flat rows.
+
+```ruby
+(Users[:username] & Posts[:title]) + Comments[:body]
+# => LowData::JoinError: A join returns flat rows, so tables can't nest under it
 ```
 
 ## Filters

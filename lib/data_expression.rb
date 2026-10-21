@@ -33,7 +33,9 @@ class LowData
     end
     # A table nested in another table's brackets, under an optional key: `Reviews[:rating, author: Users[:username]]`.
     Nested = ::Data.define(:key, :node)
-    Join = ::Data.define(:type, :left, :right)
+    Join = ::Data.define(:type, :left, :right) do
+      def nest? = type == :nest
+    end
     Inversion = ::Data.define(:table, :columns, :filter)
     # A node sorted by `keys` (Col::Key) with `rows` (Rows) kept: `Posts[:title] ^ -Col[:views] * 10`.
     Ordered = ::Data.define(:node, :keys, :rows)
@@ -78,7 +80,7 @@ class LowData
 
     def nested?
       node = @node.is_a?(Ordered) ? @node.node : @node
-      (node.is_a?(Join) && node.type == :nest) || (node.is_a?(Source) && node.nested.any?)
+      (node.is_a?(Join) && node.nest?) || (node.is_a?(Source) && node.nested.any?)
     end
 
     # Sorting again adds sort keys after the existing ones, and an expression keeps one limit, range or page size.

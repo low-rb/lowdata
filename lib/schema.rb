@@ -38,6 +38,10 @@ class LowData
       end
     end
 
+    def linked?(table, other)
+      links(from: table, to: other).any? || links(from: other, to: table).any?
+    end
+
     # Foreign keys on the `from` table that reference the `to` table, as their columns and the keys they reference.
     def links(from:, to:)
       foreign_keys(table: from).select { |foreign_key| foreign_key[:table] == to }.map do |foreign_key|

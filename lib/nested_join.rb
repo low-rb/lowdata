@@ -1,15 +1,13 @@
 # frozen_string_literal: true
 
 class LowData
-  # A join nested as flat rows, loaded with one query by QueryCompiler:
+  # A join in a nesting tree, loaded with one query by QueryCompiler. It nests as flat rows through `table`, the one of
+  # its `tables` linked to the parent, and tables nest under each of its rows:
   #   Users[:username] + (Posts[:title] & Comments[:body]) # => [{ username: 'alice', posts: [{ title: 'Hello', body: 'Nice' }] }]
-  # It nests through `table`, the one of its `tables` linked to the parent.
+  #   (Users[:username] & Posts[:title]) + Comments[:body] # => [{ username: 'alice', title: 'Hello', comments: [{ body: 'Nice' }] }]
   NestedJoin = ::Data.define(:node, :tables, :table)
 
   class NestedJoin
-    PARENT_MESSAGE = 'A join returns flat rows, so tables can\'t nest under it. Nest the join instead, ' \
-                     'e.g. Users[:username] + (Posts[:title] & Comments[:body])'
-
     def self.build(node:)
       new(node:, tables: tables_in(node:), table: nil)
     end
@@ -27,14 +25,21 @@ class LowData
     # Returns the join with its table, and the key and Link that nest it under `parent`. Only the "many" side can nest a
     # join, because joined rows can repeat the table's rows.
     def link(parent:, key:, tree:, schema:)
-      linked = tables.select { |table| schema.linked?(parent, table) }
-      raise JoinError, "No foreign key links #{tables.join(', ')} to #{parent}" if linked.empty?
-      raise JoinError, "#{linked.join(' and ')} both link to #{parent}, so the join has no single way to nest" if linked.length > 1
+      table = linked_table(others: [parent], schema:)
+      key, link = tree.link_to(parent:, child: table, key:)
+      raise JoinError, one_side_message(parent:, table:) unless link.many
 
-      key, link = tree.link_to(parent:, child: linked.first, key:)
-      raise JoinError, one_side_message(parent:, table: linked.first) unless link.many
+      [with(table:), key, link]
+    end
 
-      [with(table: linked.first), key, link]
+    # The one of the join's tables linked to any of `others`.
+    def linked_table(others:, schema:)
+      linked = tables.select { |table| others.any? { |other| schema.linked?(table, other) } }
+      names = others.join(', ')
+      raise JoinError, "No foreign key links #{tables.join(', ')} to #{names}" if linked.empty?
+      raise JoinError, "#{linked.join(' and ')} both link to #{names}, so the join has no single way to nest" if linked.length > 1
+
+      linked.first
     end
 
     private

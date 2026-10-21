@@ -5,7 +5,7 @@ class LowData
   #   Posts[:title, Users[:username]]  # => [{ title: 'Hello', user: { username: 'alice' } }]
   #   Users[:username] + Posts[:title] # => [{ username: 'alice', posts: [{ title: 'Hello' }] }]
   # In a + chain the first table is the subject, and each other operand nests under the table its foreign key links it to.
-  # A join nests as flat rows, loaded with one query: see NestedJoin.
+  # A join nests as flat rows, loaded with one query, and tables can nest under each of its rows: see NestedJoin.
   class Nesting
     # A table in the nesting tree. `link` connects it to its parent node: `parent_column` on the parent's rows matches
     # `child_column` on this table's rows, and `many` nests the matches as an array rather than one object.
@@ -25,10 +25,19 @@ class LowData
         join ? join.tables : [source.table]
       end
     end
-    Link = ::Data.define(:parent_column, :child_column, :many)
+    # `parent_table` is set when the parent is a join, whose rows hold `parent_column` under `parent_key`.
+    Link = ::Data.define(:parent_column, :child_column, :many, :parent_table) do
+      def initialize(parent_column:, child_column:, many:, parent_table: nil)
+        super
+      end
+
+      def parent_key
+        parent_table ? :"lowdata_#{parent_table}_#{parent_column}" : parent_column
+      end
+    end
 
     ROW_NUMBER = :lowdata_row_number
-    # A joined row's link value, selected under its own name so it can't clash with the joined columns.
+    # A nested join's link value, selected under its own name so it can't clash with the joined columns.
     LINK = :lowdata_link
 
     def initialize(database:)
@@ -48,21 +57,28 @@ class LowData
 
     private
 
-    def fetch(node:, filter: nil)
-      dataset = @filters.apply(dataset: @database[node.source.table].select(*select_columns(node:)), source: node.source)
-      dataset = dataset.where(filter) if filter
-      return per_parent(node:, dataset:) if filter && node.rows
-
-      @orders.apply(dataset:, keys: node.keys, rows: node.rows, tables: [node.source.table]).all
-    end
-
-    # Loads a nested join's rows for every parent row in one query, with each row's link value under LINK.
-    def fetch_join(node:, values:)
-      column = Sequel[node.source.table][node.link.child_column]
-      dataset = @queries.compile(node: node.join.node).select_append(column.as(LINK)).where(column => values)
-      return per_parent(node:, dataset:) if node.rows
+    # Fetches a node's rows, or when it's nested, its rows linked to the parents' `values`.
+    def fetch(node:, values: nil)
+      dataset = node.join ? join_dataset(node:) : table_dataset(node:)
+      dataset = dataset.where(link_column(node:) => values) if values
+      return per_parent(node:, dataset:) if values && node.rows
 
       @orders.apply(dataset:, keys: node.keys, rows: node.rows, tables: node.tables).all
+    end
+
+    def table_dataset(node:)
+      @filters.apply(dataset: @database[node.source.table].select(*select_columns(node:)), source: node.source)
+    end
+
+    # A join's rows, with the columns its parent and children link by selected under LINK and each Link#parent_key.
+    def join_dataset(node:)
+      parents = node.children.map { |child| Sequel[child.link.parent_table][child.link.parent_column].as(child.link.parent_key) }
+      links = node.link ? [link_column(node:).as(LINK)] : []
+      @queries.compile(node: node.join.node).select_append(*parents.uniq, *links)
+    end
+
+    def link_column(node:)
+      node.join ? Sequel[node.source.table][node.link.child_column] : node.link.child_column
     end
 
     # Keeps each parent's rows, e.g. each user's 3 most viewed posts, by numbering the rows within each parent.
@@ -103,29 +119,23 @@ class LowData
       end
     end
 
-    def fetch_nested(child:, values:)
-      return fetch_join(node: child, values:) if child.join
-
-      fetch(node: child, filter: { child.link.child_column => values })
-    end
-
     def columns(node:, row:)
-      return row.except(LINK) if node.join
+      return row.except(LINK, *node.children.map { |child| child.link.parent_key }) if node.join
 
       node.source.columns.empty? ? row.dup : row.slice(*node.source.columns)
     end
 
     def matches(child:, row:, nested:)
-      matches = nested.fetch(row[child.link.parent_column], [])
+      matches = nested.fetch(row[child.link.parent_key], [])
       child.link.many ? matches : matches.first
     end
 
     # Fetches a child's rows for all parent rows in one query, grouped by the value that links them.
     def nested_rows(child:, rows:)
-      values = rows.map { |row| row[child.link.parent_column] }.compact.uniq
+      values = rows.map { |row| row[child.link.parent_key] }.compact.uniq
       return {} if values.empty?
 
-      child_rows = fetch_nested(child:, values:)
+      child_rows = fetch(node: child, values:)
       link_column = child.join ? LINK : child.link.child_column
       child_rows.zip(shape(node: child, rows: child_rows))
                 .group_by { |row, _output| row[link_column] }

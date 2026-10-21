@@ -28,6 +28,9 @@ class PostsData < LowData
   def nest_join_one_side = Comments[:body] + (Posts[:title] & Users[:username])
   def nest_join_both_link = Users[:username] + (Posts[:title] & Likes[:id])
   def nest_join_unlinked = Users[:username] + (Comments[:body] & Posts[:title] & Tags[:name])
+  def nest_under_join_one = (Posts[:title] & Comments[:body]) + Users[:username]
+  def nest_under_join_sorted = (Users[:username] & Posts[:title]) + Comments[:body] ^ -Col[:title]
+  def nest_under_join_both_link = (Users[:username] & Posts[:title]) + Likes[:id]
   def nest_join_nested = Users[:username] + (Posts[:title] & (Comments[:body] + Likes[:id]))
   def bracket_one = Posts[:title, Users[:username]]
   def bracket_many = Users[:username, Posts[:title]]

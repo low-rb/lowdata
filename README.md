@@ -165,12 +165,22 @@ Users[:username] + (Posts[:title] & Comments[:body] ^ Col[:body] * 2)
 - `<`, `>` and `<=>` run after `^`, so those joins need parentheses of their own: `(Posts[] < Comments[]) ^ Col[:body]`.
 - A sort after the closing parenthesis sorts the parents instead.
 
-Only the "many" side can nest a join, because joined rows can repeat the row they link to. Tables can't nest under a join, because it returns flat rows.
+Only the "many" side can nest a join, because joined rows can repeat the row they link to.
+
+Tables can also nest under a join. Each joined row gets its own nested rows, through the one table in the join that links to them:
 
 ```ruby
 (Users[:username] & Posts[:title]) + Comments[:body]
-# => LowData::JoinError: A join returns flat rows, so tables can't nest under it
+
+# SELECT users.username, posts.title, posts.id AS lowdata_posts_id FROM users INNER JOIN posts ON (posts.user_id = users.id)
+# SELECT body, post_id FROM comments WHERE (post_id IN (...))
+# => [
+#   { username: 'alice', title: 'Hello', comments: [{ body: 'Nice' }] },
+#   { username: 'bob', title: 'World', comments: [] }
+# ]
 ```
+
+As with tables, a table the joined rows point to nests as an object: `(Posts[:title] & Comments[:body]) + Users[:username]` nests each row's `user:`.
 
 ## Filters
 

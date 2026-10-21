@@ -47,16 +47,16 @@ class LowData
 
     # Tables in brackets nest directly under the table whose brackets they're in.
     def bracketed(source:)
-      children = source.nested.map { |nested| linked(parent: source.table, child: build(node: nested.node), key: nested.key) }
-
-      with_children(node: Nesting::Node.new(source:, key: nil, link: nil, children: []), children:)
+      node = Nesting::Node.new(source:, key: nil, link: nil, children: [])
+      with_children(node:, children: source.nested.map { |nested| linked(parent: node, child: build(node: nested.node), key: nested.key) })
     end
 
-    # Sets a child's key and link to its parent, and a join's table that links them.
+    # Sets a child's key and link to its parent node. When either is a join, it links through its one table linked to the other.
     def linked(parent:, child:, key:)
-      joined = child.join&.link(parent:, key:, tree: self, schema: @schema)
-      source, key, link = joined || [child.source, *link_to(parent:, child: child.source.table, key:)]
-      child.with(source:, key:, link:)
+      table = parent.join ? parent.join.linked_table(others: child.tables, schema: @schema) : parent.source.table
+      joined = child.join&.link(parent: table, key:, tree: self, schema: @schema)
+      source, key, link = joined || [child.source, *link_to(parent: table, child: child.source.table, key:)]
+      child.with(source:, key:, link: parent.join ? link.with(parent_table: table) : link)
     end
 
     # Links the operands into a tree from the first. Every operand must be linked, and only by one path.
@@ -77,10 +77,9 @@ class LowData
     def attach(operand:, node:, edges:, visited:)
       neighbours = edges.filter_map { |pair| (pair - [operand]).first if pair.include?(operand) } - visited
       visited.concat(neighbours)
-      raise JoinError, NestedJoin::PARENT_MESSAGE if node.join && neighbours.any?
 
       children = neighbours.map do |child|
-        attach(operand: child, node: linked(parent: node.source.table, child:, key: nil), edges:, visited:)
+        attach(operand: child, node: linked(parent: node, child:, key: nil), edges:, visited:)
       end
 
       with_children(node:, children:)

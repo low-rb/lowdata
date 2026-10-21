@@ -92,7 +92,6 @@ RSpec.describe LowData::DataExpression do
 
     it 'raises when combined with other joins' do
       expect { repository.nest_then_left.sql }.to raise_error(LowData::JoinError, /can't be combined/)
-      expect { repository.nest_after_join.to_a }.to raise_error(LowData::JoinError, /tables can't nest under it/)
     end
 
     describe 'with a join' do
@@ -159,6 +158,36 @@ RSpec.describe LowData::DataExpression do
 
       it 'raises when a joined table has no foreign key' do
         expect { repository.nest_join_unlinked.to_a }.to raise_error(LowData::JoinError, /No foreign key links tags/)
+      end
+
+      it 'nests tables under each joined row' do
+        expect(repository.nest_after_join.to_a).to contain_exactly(
+          { username: 'alice', title: 'Hello', comments: [{ body: 'Nice' }] },
+          { username: 'bob', title: 'World', comments: [] }
+        )
+      end
+
+      it 'nests the table a joined row points to as an object' do
+        expect(repository.nest_under_join_one.to_a).to eq([{ title: 'Hello', body: 'Nice', user: { username: 'alice' } }])
+      end
+
+      it 'sorts the joined rows that tables nest under' do
+        expect(repository.nest_under_join_sorted.to_a.map { |row| row[:title] }).to eq(%w[World Hello])
+      end
+
+      it 'loads the join and each table under it with one query each' do
+        queries = []
+        logger = Object.new
+        logger.define_singleton_method(:info) { |message| queries << message if message.include?('SELECT') }
+        database.loggers << logger
+
+        repository.nest_after_join.to_a
+
+        expect(queries.length).to eq(2)
+      end
+
+      it 'raises when more than one joined table links to the nested table' do
+        expect { repository.nest_under_join_both_link.to_a }.to raise_error(LowData::JoinError, /users and posts both link to likes/)
       end
 
       it 'raises when the join holds nested tables' do

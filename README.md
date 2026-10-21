@@ -1,8 +1,8 @@
 <a href="https://rubygems.org/gems/lowdata" title="Install gem"><img src="https://badge.fury.io/rb/lowdata.svg" alt="Gem version" height="18"></a>
 
-## LowData [UNRELEASED]
+## LowData
 
-Instead of the model defining relationships and associated queries to the database, LowData follows the repository pattern with a twist; Data Expressions.
+LowData follows the repository pattern with a twist; Data Expressions. Use simple arithmetic to evaluate expressions that represent database tables.
 
 This expression combines the `posts` table with the `users` table while representing it conceptually as simple arithmetic:
 
@@ -60,7 +60,7 @@ Reviews[:rating, author: Users[:username], editor: Users[:username]]
 
 #### Filters
 
-Round brackets after a table filter its rows, and square brackets then choose what to return. Inside a repository's methods, keywords filter by Ruby values:
+Round brackets `()` after a table name to filter its rows, and square brackets then choose what to return. Inside a repository's methods, keywords filter by Ruby values:
 
 ```ruby
 Posts(published: true)[:title]          # WHERE published = TRUE

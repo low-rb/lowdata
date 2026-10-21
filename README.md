@@ -34,56 +34,6 @@ Table     Filter       Column       Nesting            Sort        Limit
 - `*` - Limit
 - `[1..10]` - Range
 
-## Joins
-
-### Inner join
-
-```ruby
-Users[:username] & Posts[:title]
-# SELECT users.username, posts.title FROM users INNER JOIN posts ON (posts.user_id = users.id)
-```
-
-### Left join
-
-```ruby
-Users[:username] < Posts[:title]
-# SELECT users.username, posts.title FROM users LEFT JOIN posts ON (posts.user_id = users.id)
-```
-
-### Right join
-
-```ruby
-Users[:username] > Posts[:title]
-# SELECT users.username, posts.title FROM users RIGHT JOIN posts ON (posts.user_id = users.id)
-```
-
-### Full outer join
-
-```ruby
-Users[:username] <=> Posts[:title]
-# SELECT users.username, posts.title FROM users FULL JOIN posts ON (posts.user_id = users.id)
-```
-
-The `ON` clause comes from the foreign keys in your database.
-
-Ruby evaluates `&` before `<` and `>`, so add parentheses when mixing operators: `(Users[] < Posts[]) & Comments[]`. `+` returns nested data rather than rows, so its result can't be joined, but a join can be [nested with `+`](#nesting-joins).
-
-## Data Inversion
-
-Data Expressions can invert the usual database query logic; instead of building a query of what we want from the database, we build the table we want and let the expression build the query.
-
-```ruby
-class PostsData < LowData
-  def all
-    Table[:username, :title, :body]
-
-    # SELECT users.username, posts.title, posts.body FROM posts LEFT JOIN users ON (posts.user_id = users.id)
-  end
-end
-```
-
-This expression returns the same data as the `Posts + Users` example above, flattened into one row per post. It's smart enough to know that we're in a `Posts` repository, and that our `Posts` table has a foreign key of `user_id` to the `Users` table. LowData then connects `:username` to this table automatically.
-
 ## Nesting
 
 ### Flat nesting
@@ -135,7 +85,7 @@ Reviews[:rating, author: Users[:username], editor: Users[:username]]
 
 ### Nesting joins
 
-A join nests as flat rows, under the one table in it that links to the parent:
+A [join](#joins) nests as flat rows, under the one table in it that links to the parent:
 
 ```ruby
 Users[:username] + (Posts[:title] & Comments[:body])
@@ -181,6 +131,56 @@ Tables can also nest under a join. Each joined row gets its own nested rows, thr
 ```
 
 As with tables, a table the joined rows point to nests as an object: `(Posts[:title] & Comments[:body]) + Users[:username]` nests each row's `user:`.
+
+## Joins
+
+### Inner join
+
+```ruby
+Users[:username] & Posts[:title]
+# SELECT users.username, posts.title FROM users INNER JOIN posts ON (posts.user_id = users.id)
+```
+
+### Left join
+
+```ruby
+Users[:username] < Posts[:title]
+# SELECT users.username, posts.title FROM users LEFT JOIN posts ON (posts.user_id = users.id)
+```
+
+### Right join
+
+```ruby
+Users[:username] > Posts[:title]
+# SELECT users.username, posts.title FROM users RIGHT JOIN posts ON (posts.user_id = users.id)
+```
+
+### Full outer join
+
+```ruby
+Users[:username] <=> Posts[:title]
+# SELECT users.username, posts.title FROM users FULL JOIN posts ON (posts.user_id = users.id)
+```
+
+The `ON` clause comes from the foreign keys in your database.
+
+Ruby evaluates `&` before `<` and `>`, so add parentheses when mixing operators: `(Users[] < Posts[]) & Comments[]`. `+` returns nested data rather than rows, so its result can't be joined, but a join can be [nested with `+`](#nesting-joins).
+
+## Data Inversion
+
+Data Expressions can invert the usual database query logic; instead of building a query of what we want from the database, we build the table we want and let the expression build the query.
+
+```ruby
+class PostsData < LowData
+  def all
+    Table[:username, :title, :body]
+
+    # SELECT users.username, posts.title, posts.body FROM posts LEFT JOIN users ON (posts.user_id = users.id)
+  end
+end
+```
+
+This expression returns the same data as the `Posts + Users` example above, flattened into one row per post. It's smart enough to know that we're in a `Posts` repository, and that our `Posts` table has a foreign key of `user_id` to the `Users` table. LowData then connects `:username` to this table automatically.
 
 ## Filters
 
@@ -238,7 +238,7 @@ Users(published)[:username, published[:title]] # only users with published posts
 # SELECT title, user_id FROM posts WHERE ((posts.published = TRUE) AND (user_id IN (...)))
 ```
 
-In the SQL joins below, filters go in the `WHERE` clause. To split a long expression over several lines, break inside the brackets and keep `) {` and `}[` together. A `[` at the start of a line starts a new array, silently dropping the columns.
+In [SQL joins](#joins), filters go in the `WHERE` clause. To split a long expression over several lines, break inside the brackets and keep `) {` and `}[` together. A `[` at the start of a line starts a new array, silently dropping the columns.
 
 ## Sorting
 

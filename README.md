@@ -117,6 +117,21 @@ Users[:username] + (Posts[:title] & Comments[:body] ^ Col[:body] * 2)
 
 Only the "many" side can nest a join, because joined rows can repeat the row they link to.
 
+**Use case:** a many-to-many relationship through a join table, such as posts with their tags through `post_tags`. Nesting the join gives each post a flat list of tags, where `Posts + PostTags + Tags` would nest each tag inside its `post_tags` row:
+
+```ruby
+Posts[:title, tags: PostTags[:created_at] & Tags[:name]]
+
+# SELECT title, id FROM posts
+# SELECT post_tags.created_at, tags.name, post_tags.post_id AS lowdata_link FROM post_tags INNER JOIN tags ON (post_tags.tag_id = tags.id) WHERE (post_tags.post_id IN (...))
+# => [
+#   { title: 'Hello', tags: [{ created_at: 2026-10-01, name: 'ruby' }, { created_at: 2026-10-02, name: 'sql' }] },
+#   { title: 'World', tags: [] }
+# ]
+```
+
+### Nesting under joins
+
 Tables can also nest under a join. Each joined row gets its own nested rows, through the one table in the join that links to them:
 
 ```ruby
@@ -131,6 +146,19 @@ Tables can also nest under a join. Each joined row gets its own nested rows, thr
 ```
 
 As with tables, a table the joined rows point to nests as an object: `(Posts[:title] & Comments[:body]) + Users[:username]` nests each row's `user:`.
+
+**Use case:** a report of flat rows, each with its own details, such as orders with their customer's name and their line items, largest first:
+
+```ruby
+(Orders[:total] & Customers[:name]) + LineItems[:product, :quantity] ^ -Col[:total]
+
+# SELECT orders.total, customers.name, orders.id AS lowdata_orders_id FROM orders INNER JOIN customers ON (orders.customer_id = customers.id) ORDER BY orders.total DESC
+# SELECT product, quantity, order_id FROM line_items WHERE (order_id IN (...))
+# => [
+#   { total: 120, name: 'Acme', line_items: [{ product: 'Anvil', quantity: 2 }, { product: 'Rope', quantity: 1 }] },
+#   { total: 80, name: 'Globex', line_items: [{ product: 'Lamp', quantity: 4 }] }
+# ]
+```
 
 ## Joins
 

@@ -266,24 +266,29 @@ Combine conditions with `&` and `|`, not `&&` and `||`: Ruby can't overload `&&`
 A table in round brackets keeps the rows that have related rows in it:
 
 ```ruby
-Users(Posts(published: true))[:username] # Users with a published post.
+# Users with a published post.
+Users(Posts(published: true))[:username]
 # SELECT users.username FROM users WHERE (EXISTS (SELECT 1 FROM posts WHERE ((posts.user_id = users.id) AND (posts.published = TRUE))))
 
-Users(~Posts)[:username] # Users with no posts.
+# Users with no posts.
+Users(~Posts)[:username]
 # SELECT users.username FROM users WHERE NOT (EXISTS (SELECT 1 FROM posts WHERE (posts.user_id = users.id)))
 
-Users(Posts => 3..)[:username] # Users with 3 or more posts.
+# Users with 3 or more posts.
+Users(Posts => 3..)[:username]
 # SELECT users.username FROM users WHERE ((SELECT count(*) FROM posts WHERE (posts.user_id = users.id)) >= 3)
 
-Reviews(author: Users(username: 'alice'))[:rating] # A name picks the foreign key to follow.
+# A name picks the foreign key to follow.
+Reviews(author: Users(username: 'alice'))[:rating]
 # SELECT reviews.rating FROM reviews WHERE (EXISTS (SELECT 1 FROM users WHERE ((users.id = reviews.author_id) AND (users.username = 'alice'))))
 ```
 
 On a nested table a filter only filters the nested rows: `Users[:username] + Posts(published: true)[:title]` returns every user, each with their published posts. To filter both, reuse the filtered table:
 
 ```ruby
+# Only users with published posts, and only those posts.
 published = Posts(published: true)
-Users(published)[:username] + published[:title] # only users with published posts, and only those posts
+Users(published)[:username] + published[:title]
 
 # SELECT username, id FROM users WHERE (EXISTS (SELECT 1 FROM posts WHERE ((posts.user_id = users.id) AND (posts.published = TRUE))))
 # SELECT title, user_id FROM posts WHERE ((posts.published = TRUE) AND (user_id IN (...)))

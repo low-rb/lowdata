@@ -50,6 +50,8 @@ class LowData
     Join = ::Data.define(:type, :left, :right) do
       def nest? = type == :nest
     end
+    # Tables nested side by side in the table before them: `Posts[:title] + [Comments[:body], Likes[]]`.
+    Siblings = ::Data.define(:nodes)
     Inversion = ::Data.define(:table, :columns, :renames, :filter)
     # A node sorted by `keys` (Col::Key) with `rows` (Rows) kept: `Posts[:title] ^ -Col[:views] * 10`.
     Ordered = ::Data.define(:node, :keys, :rows)
@@ -107,6 +109,14 @@ class LowData
       @node = ordered.with(keys: ordered.keys + keys, rows: Rows.merge(ordered.rows, rows))
     end
 
+    def add_siblings(expressions)
+      invalid = expressions.reject { |expression| expression.is_a?(DataExpression) }
+      raise ArgumentError, "Nest data expressions such as Comments[:body], not #{invalid.map(&:inspect).join(', ')}" if invalid.any?
+      raise ArgumentError, 'Nest at least one table, e.g. Posts[:title] + [Comments[:body], Likes[]]' if expressions.empty?
+
+      @node = Join.new(type: :nest, left: @node, right: Siblings.new(nodes: expressions.map(&:node)))
+    end
+
     def xor_value(value)
       raise ArgumentError, format(SORT_MESSAGE, value: value.inspect) unless value.is_a?(Col)
 
@@ -145,6 +155,8 @@ class LowData
       end
 
       define_method(:"#{prefix}_value") do |value|
+        return add_siblings(value) if prefix == :add && value.is_a?(Array)
+
         raise ArgumentError, "Join a data expression such as Posts[:title], not the value #{value.inspect}"
       end
 

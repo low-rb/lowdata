@@ -1,13 +1,13 @@
 # frozen_string_literal: true
 
 class LowData
-  # A join in a nesting tree, loaded with one query by QueryCompiler. It nests as flat rows through `table`, the one of
-  # its `tables` linked to the parent, and tables nest under each of its rows:
+  # A join in a nesting tree, loaded with one query by QueryCompiler. It nests as flat rows, and tables nest under each
+  # of its rows, through its table written next to the +: its first table after a +, and its last table before one.
   #   Users[:username] + (Posts[:title] & Comments[:body]) # => [{ username: 'alice', posts: [{ title: 'Hello', body: 'Nice' }] }]
   #   (Users[:username] & Posts[:title]) + Comments[:body] # => [{ username: 'alice', title: 'Hello', comments: [{ body: 'Nice' }] }]
   #
-  # When more than one of its tables links, a foreign key named in round brackets picks the one:
-  #   Users[:username] + (Posts(:user_id)[:title] & Likes[:id]) # Posts and likes both link to users, by posts.user_id.
+  # A foreign key named in round brackets links through another of its tables:
+  #   Users[:username] + (Posts[:title] & Likes(:user_id)[:id]) # Links through likes.user_id.
   NestedJoin = ::Data.define(:node, :tables, :table, :foreign_keys)
 
   class NestedJoin
@@ -37,44 +37,41 @@ class LowData
       [with(table:), key, link]
     end
 
-    # The one of the join's tables linked to any of `others`, picked by a foreign key named in round brackets when more
-    # than one is. `foreign_keys` are the named foreign keys of `others`, by table. `nested` is true when the join nests
-    # in `others`, and false when `others` nest in the join.
+    # The table the join links to `others` through: the one written next to the +, unless a foreign key named in round
+    # brackets links another. `foreign_keys` are the named foreign keys of `others`, by table. `nested` is true when the
+    # join nests in `others`, so the + is before its first table, and false when `others` nest in it, after its last.
     def linked_table(others:, schema:, foreign_keys:, nested: false)
-      linked = tables.select { |table| others.any? { |other| schema.linked?(table, other) } }
-      raise JoinError, "No foreign key links #{tables.join(', ')} to #{others.join(', ')}" if linked.empty?
+      named = named(others:, schema:, foreign_keys: self.foreign_keys.merge(foreign_keys))
+      table = named.first || (nested ? tables.first : tables.last)
+      return table if others.any? { |other| schema.linked?(table, other) }
 
-      linked = named(linked:, others:, schema:, foreign_keys: self.foreign_keys.merge(foreign_keys)) if linked.length > 1
-      raise JoinError, ambiguous_message(linked:, others:, nested:, schema:) if linked.length > 1
-
-      linked.first
+      raise JoinError, unlinked_message(table:, others:, schema:)
     end
 
     private
 
-    # The linked tables whose foreign key to `others`, on either side, is named in round brackets, or all of them if none is.
-    def named(linked:, others:, schema:, foreign_keys:)
-      named = linked.select do |table|
+    # The join's tables whose foreign key to `others`, on either side, is named in round brackets.
+    def named(others:, schema:, foreign_keys:)
+      tables.select do |table|
         others.any? do |other|
           columns = (schema.links(from: table, to: other) + schema.links(from: other, to: table)).flat_map { |link| link[:columns] }
           (columns & (foreign_keys.fetch(table, []) + foreign_keys.fetch(other, []))).any?
         end
       end
-      named.empty? ? linked : named
     end
 
-    # Suggests naming each foreign key that could link them, on the table that has it.
-    def ambiguous_message(linked:, others:, nested:, schema:)
+    # Suggests naming the foreign key of another of the join's tables that links, on the table that has it.
+    def unlinked_message(table:, others:, schema:)
       names = others.join(', ')
-      problem = nested ? "the join can't nest in #{names}" : "#{names} can't nest in the join"
-      choices = linked.product(others).flat_map do |table, other|
-        [[table, other], [other, table]].flat_map do |from, to|
+      choices = (tables - [table]).product(others).flat_map do |linked, other|
+        [[linked, other], [other, linked]].flat_map do |from, to|
           schema.links(from:, to:).map { |link| "#{LowData.constant_name(from)}(:#{link[:columns].first})" }
         end
       end
+      message = "No foreign key links #{table} to #{names}, and a join links through its table written next to the +"
+      return message if choices.empty?
 
-      "#{linked.join(' and ')} both link to #{names}, so #{problem} by a single foreign key. " \
-        "Name the foreign key to nest by in round brackets: #{choices.join(' or ')}"
+      "#{message}. Write the table that links next to the +, or name its foreign key: #{choices.sort.join(' or ')}"
     end
 
     def one_side_message(parent:, table:)

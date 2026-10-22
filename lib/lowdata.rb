@@ -16,6 +16,7 @@ require_relative 'inversion'
 require_relative 'nested_join'
 require_relative 'nesting'
 require_relative 'nesting_tree'
+require_relative 'nesting_path'
 require_relative 'query_compiler'
 require_relative 'table_reference'
 

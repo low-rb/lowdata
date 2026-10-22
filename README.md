@@ -49,12 +49,23 @@ Users[:username] + Posts[:title] + Comments[:body]
 # ]
 ```
 
-Every row of the first table appears exactly once, so rows never repeat or drop out, and sibling tables such as `Posts + Comments + Likes` nest side by side. Parentheses group a `+` chain, so `Users + (Posts + Likes)` nests likes under posts.
+Every row of the first table appears exactly once, so rows never repeat or drop out. Each table nests in the table written before it, so the expression has the shape of the result. Tables nested side by side go in an array:
+
+```ruby
+Posts[:title] + [Comments[:body], Likes[]]
+
+# SELECT title, id FROM posts
+# SELECT body, post_id FROM comments WHERE (post_id IN (...))
+# SELECT likes.* FROM likes WHERE (post_id IN (...))
+# => [{ title: 'Hello', comments: [{ body: 'Nice' }], likes: [{ id: 1, ... }, { id: 2, ... }] }]
+```
+
+An array's elements can be chains, and an array ends a chain: `Users + [Posts + Comments, Orders]` nests posts with their comments, and orders, in each user. A table can also reach back to an earlier table by naming its foreign key in round brackets: `Users + Posts + Orders(:user_id)` nests orders in users, beside posts.
 
 > [!NOTE]
-> **`+` follows foreign keys, not position. The order of tables after the first doesn't matter.**
+> **`+` follows position. Foreign keys only decide how each table links to the one before it.**
 >
-> In `Posts + Comments + Likes`, comments and likes both link to posts, so they nest side by side. In `Users + Posts + Comments`, comments link to posts, so they nest under posts, even though nothing in the syntax says so. That's why sibling tables need no special syntax: the schema already says where each table goes.
+> In `Users + Posts + Comments`, comments link to posts by `comments.post_id`. If comments also have a `user_id`, it's ignored, because comments are written next to posts, not users. So a foreign key added between other tables can't change or break the expression.
 
 ### Inline nesting
 
@@ -69,7 +80,7 @@ Users[:username, Posts[:title, Likes[]]]
 # => [{ username: 'alice', posts: [{ title: 'Hello', likes: [{ id: 1, ... }] }] }]
 ```
 
-`+` is shorthand for this where LowData can work out the structure from foreign keys: `Posts[:title] + Users[:username]` returns the same data as `Posts[:title, Users[:username]]`.
+`+` is another way to write this: `Users[:username] + Posts[:title] + Likes[]` returns the same data as the example above, and `Posts[:title] + Users[:username]` the same as `Posts[:title, Users[:username]]`.
 
 A keyword names a nested table. On the "one" side the name also picks the foreign key, so the same table can nest twice:
 
@@ -84,7 +95,7 @@ Reviews[:rating, author: Users[:username], editor: Users[:username]]
 
 ### Nesting joins
 
-A [join](#joins) nests as flat rows, under the one table in it that links to the parent:
+A [join](#joins) nests as flat rows, linked through its first table, the one written next to the `+`:
 
 ```ruby
 Users[:username] + (Posts[:title] & Comments[:body])
@@ -116,7 +127,7 @@ Users[:username] + (Posts[:title] & Comments[:body] ^ Col[:body] * 2)
 
 Only the "many" side can nest a join, because joined rows can repeat the row they link to.
 
-When more than one of the join's tables links to the parent, name the foreign key to nest by in round brackets: `Users[:username] + (Posts(:user_id)[:title] & Likes[:id])` nests through `posts.user_id`, although likes have a `user_id` too.
+Because the join links through the table next to the `+`, `Users[:username] + (Posts[:title] & Likes[:id])` nests through `posts.user_id`, although likes have a `user_id` too. To link through another of its tables, name its foreign key: `Likes(:user_id)`.
 
 **Use case:** a many-to-many relationship through a join table, such as posts with their tags through `post_tags`. Nesting the join gives each post a flat list of tags, where `Posts + PostTags + Tags` would nest each tag inside its `post_tags` row:
 
@@ -135,7 +146,7 @@ The tags nest under `post_tags`, the table that links them to posts. To name the
 
 ### Nesting under joins
 
-Tables can also nest under a join. Each joined row gets its own nested rows, through the one table in the join that links to them:
+Tables can also nest under a join. Each joined row gets its own nested rows, through the join's last table, the one written next to the `+`:
 
 ```ruby
 (Users[:username] & Posts[:title]) + Comments[:body]
@@ -148,18 +159,18 @@ Tables can also nest under a join. Each joined row gets its own nested rows, thr
 # ]
 ```
 
-As with tables, a table the joined rows point to nests as an object: `(Posts[:title] & Comments[:body]) + Users[:username]` nests each row's `user:`.
+As with tables, a table the joined rows point to nests as an object: `(Comments[:body] & Posts[:title]) + Users[:username]` nests each row's `user:`.
 
 **Use case:** a report of flat rows, each with its own details, such as orders with their customer's name and their line items, largest first:
 
 ```ruby
-(Orders[:total] & Customers[:name]) + LineItems[:product, :quantity] ^ -Col[:total]
+(Customers[:name] & Orders[:total]) + LineItems[:product, :quantity] ^ -Col[:total]
 
-# SELECT orders.total, customers.name, orders.id AS lowdata_orders_id FROM orders INNER JOIN customers ON (orders.customer_id = customers.id) ORDER BY orders.total DESC
+# SELECT customers.name, orders.total, orders.id AS lowdata_orders_id FROM customers INNER JOIN orders ON (orders.customer_id = customers.id) ORDER BY orders.total DESC
 # SELECT product, quantity, order_id FROM line_items WHERE (order_id IN (...))
 # => [
-#   { total: 120, name: 'Acme', line_items: [{ product: 'Anvil', quantity: 2 }, { product: 'Rope', quantity: 1 }] },
-#   { total: 80, name: 'Globex', line_items: [{ product: 'Lamp', quantity: 4 }] }
+#   { name: 'Acme', total: 120, line_items: [{ product: 'Anvil', quantity: 2 }, { product: 'Rope', quantity: 1 }] },
+#   { name: 'Globex', total: 80, line_items: [{ product: 'Lamp', quantity: 4 }] }
 # ]
 ```
 
@@ -193,7 +204,7 @@ Users[:username] <=> Posts[:title]
 # SELECT users.username, posts.title FROM users FULL JOIN posts ON (posts.user_id = users.id)
 ```
 
-The `ON` clause comes from the foreign keys in your database.
+The `ON` clause comes from the foreign keys in your database. Each table joins to the table written before it, using only the foreign keys between the two. To join to an earlier table, name its foreign key: `Posts[:title] & Users[:username] & Orders(:user_id)[:total]` joins orders to users.
 
 Ruby evaluates `&` before `<` and `>`, so add parentheses when mixing operators: `(Users[] < Posts[]) & Comments[]`. `+` returns nested data rather than rows, so its result can't be joined, but a join can be [nested with `+`](#nesting-joins).
 

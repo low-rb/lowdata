@@ -1,6 +1,6 @@
 # ADR 0001: What `+` means in a data expression
 
-- **Status:** Accepted
+- **Status:** Accepted. Where each table nests is superseded by [ADR 0009](0009-nesting-by-position.md): each table nests in the one before it, not wherever its foreign key leads.
 - **Date:** 2026-10-20
 - **Revised:** 2026-10-20. The decision was first option 6 (a flat many-to-one join), then changed to option 5 (nested results) with the subject taken from operand order. See [Why option 6 was replaced](#why-option-6-was-replaced).
 

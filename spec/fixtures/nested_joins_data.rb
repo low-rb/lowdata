@@ -17,10 +17,11 @@ class NestedJoinsData < LowData
   def nest_join_both_link = Users[:username] + (Posts[:title] & Likes[:id])
   def nest_join_foreign_key = Users[:username] + (Posts(:user_id)[:title] & Likes[:id])
   def nest_join_other_foreign_key = Users[:username] + (Posts[:title] & Likes(:user_id)[:id])
-  def nest_join_unlinked = Users[:username] + (Comments[:body] & Posts[:title] & Tags[:name])
-  def nest_under_join_one = (Posts[:title] & Comments[:body]) + Users[:username]
+  def nest_join_unlinked = Users[:username] + (Posts[:title] & Comments[:body] & Tags[:name])
+  def nest_under_join_one = (Comments[:body] & Posts[:title]) + Users[:username]
   def nest_under_join_sorted = (Users[:username] & Posts[:title]) + Comments[:body] ^ -Col[:title]
   def nest_under_join_both_link = (Users[:username] & Posts[:title]) + Likes[:id]
   def nest_under_join_foreign_key = (Users[:username] & Posts[:title]) + Likes(:post_id)[:id]
+  def nest_under_join_other_foreign_key = (Users[:username] & Posts[:title]) + Likes(:user_id)[:id]
   def nest_join_nested = Users[:username] + (Posts[:title] & (Comments[:body] + Likes[:id]))
 end

@@ -21,8 +21,12 @@ RSpec.describe 'Nesting joins with +' do
     expect(repository.nest_left_join.to_a).to include({ username: 'bob', posts: [{ title: 'World', body: nil }] })
   end
 
-  it 'links through whichever joined table links to the parent' do
-    expect(repository.nest_join_reordered.to_a).to include({ username: 'alice', posts: [{ body: 'Nice', title: 'Hello' }] })
+  it 'links through the joined table written next to the +' do
+    expect { repository.nest_join_reordered.to_a }.to raise_error(
+      LowData::JoinError,
+      'No foreign key links comments to users, and a join links through its table written next to the +. ' \
+      'Write the table that links next to the +, or name its foreign key: Posts(:user_id)'
+    )
   end
 
   it 'loads the join with one query' do
@@ -66,12 +70,8 @@ RSpec.describe 'Nesting joins with +' do
     expect { repository.nest_join_one_side.to_a }.to raise_error(LowData::JoinError, /comments points to posts/)
   end
 
-  it 'raises when more than one joined table links to the parent' do
-    expect { repository.nest_join_both_link.to_a }.to raise_error(
-      LowData::JoinError,
-      "posts and likes both link to users, so the join can't nest in users by a single foreign key. " \
-      'Name the foreign key to nest by in round brackets: Posts(:user_id) or Likes(:user_id)'
-    )
+  it 'links through the table next to the + when more than one joined table links to the parent' do
+    expect(repository.nest_join_both_link.to_a).to match_array(repository.nest_join_foreign_key.to_a)
   end
 
   it 'links by the foreign key named in round brackets when more than one table links' do
@@ -117,11 +117,14 @@ RSpec.describe 'Nesting joins with +' do
     expect(queries.length).to eq(2)
   end
 
-  it 'raises when more than one joined table links to the nested table' do
-    expect { repository.nest_under_join_both_link.to_a }.to raise_error(
-      LowData::JoinError,
-      "users and posts both link to likes, so likes can't nest in the join by a single foreign key. " \
-      'Name the foreign key to nest by in round brackets: Likes(:user_id) or Likes(:post_id)'
+  it 'links through the table next to the + when more than one joined table links to the nested table' do
+    expect(repository.nest_under_join_both_link.to_a).to match_array(repository.nest_under_join_foreign_key.to_a)
+  end
+
+  it 'links a table under a join through another joined table by a named foreign key' do
+    expect(repository.nest_under_join_other_foreign_key.to_a).to contain_exactly(
+      { username: 'alice', title: 'Hello', likes: [] },
+      { username: 'bob', title: 'World', likes: [{ id: 1 }] }
     )
   end
 

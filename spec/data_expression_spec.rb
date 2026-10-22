@@ -37,8 +37,8 @@ RSpec.describe LowData::DataExpression do
       )
     end
 
-    it 'nests by foreign key whatever order the tables after the subject are written in' do
-      expect(repository.nest_chain_reordered.to_a).to match_array(repository.nest_chain.to_a)
+    it 'nests each table in the one before it, so order matters' do
+      expect { repository.nest_chain_reordered.to_a }.to raise_error(LowData::JoinError, 'No foreign key links comments to users')
     end
 
     it 'nests up through the tables a row points to' do
@@ -90,8 +90,8 @@ RSpec.describe LowData::DataExpression do
       expect { repository.nest_chain.dataset }.to raise_error(LowData::Error, /no single dataset/)
     end
 
-    it 'raises when foreign keys link the tables by more than one path' do
-      expect { repository.nest_multiple_paths.to_a }.to raise_error(LowData::JoinError, /more than one path/)
+    it 'links only adjacent tables, ignoring foreign keys to tables further back' do
+      expect(repository.nest_multiple_paths.to_a).to match_array(repository.bracket_deep.to_a)
     end
 
     it 'raises when no foreign key links the tables' do
@@ -103,7 +103,7 @@ RSpec.describe LowData::DataExpression do
     end
 
     it 'raises on a self join' do
-      expect { repository.nest_self.to_a }.to raise_error(LowData::JoinError, /Can't join users to itself/)
+      expect { repository.nest_self.to_a }.to raise_error(LowData::JoinError, "Can't nest users in itself")
     end
 
     it 'raises when combined with other joins' do

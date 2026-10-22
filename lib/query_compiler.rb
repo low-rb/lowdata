@@ -62,7 +62,7 @@ class LowData
       raise JoinError, NESTING_JOIN_MESSAGE if right.nested.any?
       raise JoinError, "Can't join #{right.table} to itself" if sources.any? { |source| source.table == right.table }
 
-      conditions = join_conditions(left_tables: sources.map(&:table), right_table: right.table)
+      conditions = join_conditions(left: sources, right:)
       sources << right
       dataset.join_table(type, right.table, conditions)
     end
@@ -90,15 +90,29 @@ class LowData
       source.columns.map { |column| Sequel[source.table][column] } + source.aliases
     end
 
-    def join_conditions(left_tables:, right_table:)
-      candidates = left_tables.flat_map do |left_table|
-        @schema.references(from: right_table, to: left_table) + @schema.references(from: left_table, to: right_table)
-      end
-
-      raise JoinError, "No foreign key links #{right_table} to #{left_tables.join(', ')}" if candidates.empty?
-      raise JoinError, "More than one foreign key links #{right_table} to #{left_tables.join(', ')}" if candidates.length > 1
+    # Each table joins to the table before it, or to an earlier one by a foreign key named in round brackets, so foreign
+    # keys between other tables can't change or break a join.
+    def join_conditions(left:, right:)
+      named = left.flat_map { |source| references(from: right, to: source, named: true) + references(from: source, to: right, named: true) }
+      candidates = named.any? ? named : references(from: right, to: left.last) + references(from: left.last, to: right)
+      raise JoinError, unlinked_join_message(left:, right:) if candidates.empty?
+      raise JoinError, "More than one foreign key links #{right.table} to #{left.last.table}" if candidates.length > 1
 
       candidates.first
+    end
+
+    def references(from:, to:, named: false)
+      @schema.references(from: from.table, to: to.table, named: named ? from.filter.foreign_keys : nil)
+    end
+
+    def unlinked_join_message(left:, right:)
+      message = "No foreign key links #{right.table} to #{left.last.table}, the table before it"
+      choices = left[0...-1].flat_map do |source|
+        [[right.table, source.table], [source.table, right.table]].flat_map do |from, to|
+          @schema.links(from:, to:).map { |link| "#{LowData.constant_name(from)}(:#{link[:columns].first})" }
+        end
+      end
+      choices.empty? ? message : "#{message}. To join it to an earlier table, name the foreign key: #{choices.sort.join(' or ')}"
     end
 
     def nested_join_message

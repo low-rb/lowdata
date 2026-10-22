@@ -41,13 +41,25 @@ class LowData
       owner(table:, column:).tap { |owner| @schema.check_renames!(table: owner, renames: { name => column }) }
     end
 
-    # The repository's table left joined to each other table that owns a column.
+    # The repository's table left joined to each other table that owns a column. Joins link to the table before them,
+    # so each table names the foreign keys that link it to the repository's table, on whichever side they are.
     def tree(node:, tables:)
-      base = DataExpression::Source.new(table: node.table, columns: [], filter: node.filter)
+      owners = tables.uniq - [node.table]
+      base_keys = owners.flat_map { |table| link_columns(from: node.table, to: table) }
+      base = DataExpression::Source.new(table: node.table, columns: [], filter: node.filter.merge(named(base_keys)))
 
-      (tables.uniq - [node.table]).reduce(base) do |left, table|
-        DataExpression::Join.new(type: :left, left:, right: DataExpression::Source.new(table:, columns: []))
+      owners.reduce(base) do |left, table|
+        right = DataExpression::Source.new(table:, columns: [], filter: named(link_columns(from: table, to: node.table)))
+        DataExpression::Join.new(type: :left, left:, right:)
       end
+    end
+
+    def link_columns(from:, to:)
+      @schema.links(from:, to:).flat_map { |link| link[:columns] }
+    end
+
+    def named(foreign_keys)
+      DataExpression::Filter.new(foreign_keys:)
     end
 
     def ambiguous_message(table:, column:, owners:)

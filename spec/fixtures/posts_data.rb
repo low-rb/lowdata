@@ -7,7 +7,7 @@ class PostsData < LowData
   def nest_chain = Users[:username] + Posts[:title] + Comments[:body]
   def nest_chain_reordered = Users[:username] + Comments[:body] + Posts[:title]
   def nest_up = Comments[:body] + Posts[:title] + Users[:username]
-  def nest_siblings = Posts[:title] + Comments[:body] + Likes[:id]
+  def nest_siblings = Posts[:title] + [Comments[:body], Likes[:id]]
   def nest_all_columns = Posts[] + Users[:username]
   def nest_then_left = Users[:username] + Posts[:title] < Comments[:body]
   def nest_multiple_paths = Users[:username] + Posts[:title] + Likes[:id]

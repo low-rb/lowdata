@@ -31,9 +31,10 @@ class LowData
       (outgoing + incoming).uniq - [table]
     end
 
-    # Foreign keys on the `from` table that reference the `to` table, as join conditions.
-    def references(from:, to:)
-      links(from:, to:).map do |link|
+    # Foreign keys on the `from` table that reference the `to` table, as join conditions. `named` keeps only the foreign
+    # keys with those columns.
+    def references(from:, to:, named: nil)
+      links(from:, to:).select { |link| named.nil? || (link[:columns] & named).any? }.map do |link|
         link[:columns].zip(link[:keys]).to_h { |column, key| [Sequel[from][column], Sequel[to][key]] }
       end
     end

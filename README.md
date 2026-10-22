@@ -1,39 +1,32 @@
 <a href="https://rubygems.org/gems/lowdata" title="Install gem"><img src="https://badge.fury.io/rb/lowdata.svg" alt="Gem version" height="18"></a>
 
-LowData follows the repository pattern with a twist; Data Expressions. Use simple arithmetic to connect tables:
+LowData follows the repository pattern with a twist; *Data Expressions*. Data Expressions are just that, they are values, that represent a table and its columns (`TableName[:column]`). LowData then uses simple arithmetic to connect these tables together:
+- `+` combines tables (usually [nesting](#nesting) data into the parent)
+- `*` describes how many results you want
+- `&`, `<`,`>` [joins](#joins) tables together
 
+**For example this expression:**
 ```ruby
 class PostsData < LowData
   def all
     Posts[:title, :body] + Users[:username]
-
-    # SELECT title, body, user_id FROM posts
-    # SELECT username, id FROM users WHERE (id IN (...))
-    # => [
-    #   { title: 'Hello', body: '...', user: { username: 'alice' } },
-    #   { title: 'World', body: '...', user: { username: 'bob' } }
-    # ]
   end
 end
 ```
 
-The above expression returns a list of posts with each post's user nested inside it.
-
-⭐ **Syntax overview:**
-```ruby
-Posts(published: true)[:title] + Users[:username] ^ Col[:created_at] * 10
-
-└─┬─┘└───────┬───────┘└──┬───┘ └───────┬────────┘ └───────┬────────┘ └┬─┘
-Table     Filters     Columns       Nesting            Sorting       Limit
+...generates this SQL query:
+```sql
+SELECT title, body, user_id FROM posts
+SELECT username, id FROM users WHERE (id IN (...))
 ```
 
-✨ **Symbols:**
-- `()` - Filtering
-- `[]` - Structure
-- `^` - Sorting
-- `*` - Limit
-- `/ 2` - Pagination
-- `[1..10]` - Range
+...which results in a list of posts with each post's user nested inside it:
+```ruby
+[
+  { title: 'Hello', body: '...', user: { username: 'alice' } },
+  { title: 'World', body: '...', user: { username: 'bob' } }
+]
+```
 
 ## Nesting
 
@@ -56,7 +49,12 @@ Users[:username] + Posts[:title] + Comments[:body]
 # ]
 ```
 
-Every row of the first table appears exactly once, so rows never repeat or drop out, and sibling tables such as `Posts + Comments + Likes` nest side by side. The tables after the first can be written in any order. `+` runs one query per table, so `sql` returns each query, separated by semicolons, and shows the values each query takes from the rows above it as `IN (...)`. It raises when foreign keys link the tables by more than one path, or when more than one foreign key links two tables.
+Every row of the first table appears exactly once, so rows never repeat or drop out, and sibling tables such as `Posts + Comments + Likes` nest side by side. Parentheses group a `+` chain, so `Users + (Posts + Likes)` nests likes under posts.
+
+> [!NOTE]
+> **`+` follows foreign keys, not position. The order of tables after the first doesn't matter.**
+>
+> In `Posts + Comments + Likes`, comments and likes both link to posts, so they nest side by side. In `Users + Posts + Comments`, comments link to posts, so they nest under posts, even though nothing in the syntax says so. That's why sibling tables need no special syntax: the schema already says where each table goes.
 
 ### Inline nesting
 
@@ -71,7 +69,7 @@ Users[:username, Posts[:title, Likes[]]]
 # => [{ username: 'alice', posts: [{ title: 'Hello', likes: [{ id: 1, ... }] }] }]
 ```
 
-`+` is shorthand for this where LowData can work out the structure from foreign keys: `Posts[:title] + Users[:username]` returns the same data as `Posts[:title, Users[:username]]`. Parentheses group a `+` chain, so `Users + (Posts + Likes)` nests likes under posts.
+`+` is shorthand for this where LowData can work out the structure from foreign keys: `Posts[:title] + Users[:username]` returns the same data as `Posts[:title, Users[:username]]`.
 
 A keyword names a nested table. On the "one" side the name also picks the foreign key, so the same table can nest twice:
 
@@ -346,6 +344,24 @@ Users[:username] + (Posts[:title] ^ -Col[:views] * 3) ^ Col[:username]
 ```
 
 After `&`, a sort applies to the joined rows, using whichever table has the column. `<`, `>` and `<=>` bind looser than `^`, so put the join in parentheses: `(Users[] < Posts[]) ^ Col[:username]`. After a `+` chain, a sort applies to the first table.
+
+## Syntax
+
+⭐ **Overview:**
+```ruby
+Posts(published: true)[:title] + Users[:username] ^ Col[:created_at] * 10
+
+└─┬─┘└───────┬───────┘└──┬───┘ └───────┬────────┘ └───────┬────────┘ └┬─┘
+Table     Filters     Columns       Nesting            Sorting       Limit
+```
+
+✨ **Symbols:**
+- `()` - Filtering
+- `[]` - Structure
+- `^` - Sorting
+- `*` - Limit
+- `/ 2` - Pagination
+- `[1..10]` - Range
 
 ## Multi-line expressions
 

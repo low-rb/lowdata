@@ -24,14 +24,15 @@ The above expression returns a list of posts with each post's user nested inside
 Posts(published: true)[:title] + Users[:username] ^ Col[:created_at] * 10
 
 └─┬─┘└───────┬───────┘└──┬───┘ └───────┬────────┘ └───────┬────────┘ └┬─┘
-Table     Filter      Column        Nesting             Sort        Limit
+Table     Filters     Columns       Nesting            Sorting       Limit
 ```
 
-✨ **Special characters:**
+✨ **Symbols:**
 - `()` - Filtering
 - `[]` - Structure
 - `^` - Sorting
 - `*` - Limit
+- `/ 2` - Pagination
 - `[1..10]` - Range
 
 ## Nesting
@@ -288,7 +289,7 @@ Users(published)[:username] + published[:title] # only users with published post
 # SELECT title, user_id FROM posts WHERE ((posts.published = TRUE) AND (user_id IN (...)))
 ```
 
-In [SQL joins](#joins), filters go in the `WHERE` clause. To split a long expression over several lines, break inside the brackets and keep `) {` and `}[` together. A `[` at the start of a line starts a new array, silently dropping the columns.
+In [SQL joins](#joins), filters go in the `WHERE` clause. To split a long expression over several lines, see [Multi-line expressions](#multi-line-expressions).
 
 ## Sorting
 
@@ -340,3 +341,63 @@ Users[:username] + (Posts[:title] ^ -Col[:views] * 3) ^ Col[:username]
 ```
 
 After `&`, a sort applies to the joined rows, using whichever table has the column. `<`, `>` and `<=>` bind looser than `^`, so put the join in parentheses: `(Users[] < Posts[]) ^ Col[:username]`. After a `+` chain, a sort applies to the first table.
+
+## Multi-line expressions
+
+Expressions are plain Ruby values that don't run until they're used, so they can be split over lines, named and built from other methods.
+
+**One table per line.** End each line with its operator:
+
+```ruby
+Users[:username] +
+  Posts(published: true)[:title] +
+  Comments[:body]
+```
+
+Ruby ends a statement at a line break when the line is complete, even inside parentheses, so an operator at the start of the next line begins a new statement. A leading `+` raises `undefined method '+@'`, and a leading `&`, `<`, `^` or `*` is a syntax error.
+
+**Long brackets.** Break inside the brackets, with the columns on one line and each nested table on its own:
+
+```ruby
+Reviews[
+  :rating, :title,
+  author: Users[:username],
+  editor: Users[:username]
+]
+```
+
+With a filter, keep `) {` and `}[` together:
+
+```ruby
+Posts(published: true) {
+  views > 100
+}[
+  :title, :views,
+  Users[:username]
+]
+```
+
+Split anywhere else and Ruby reads the next line as a new statement. A `{` at the start of a line is a hash, which is a syntax error. A `[` at the start of a line is a new array, which fails silently:
+
+```ruby
+Posts(published: true) { views > 100 }
+[:title, :views] # A new array, so the method returns [:title, :views] instead of posts
+```
+
+**Name the parts.** A local variable gives a dense part, such as a per-parent sort and limit, a name:
+
+```ruby
+top_posts = Posts[:title] ^ -Col[:views] * 3
+Users[:username] + top_posts ^ Col[:username]
+```
+
+**Build from methods.** Repository methods return expressions, so they combine like any other:
+
+```ruby
+class UsersData < LowData
+  def published_posts = Posts(published: true)[:title]
+  def authors = Users[:username] + published_posts
+end
+```
+
+Each method is short, named and can be tested on its own, and `authors` reads like a sentence.

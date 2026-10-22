@@ -24,6 +24,11 @@ class LowData
       def tables
         join ? join.tables : [source.table]
       end
+
+      # The foreign keys named in round brackets, by table: `Posts(:user_id)`.
+      def foreign_keys
+        join ? join.foreign_keys : { source.table => source.filter.foreign_keys }
+      end
     end
     # `parent_table` is set when the parent is a join, whose rows hold `parent_column` under `parent_key`.
     Link = ::Data.define(:parent_column, :child_column, :many, :parent_table) do

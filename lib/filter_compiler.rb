@@ -9,14 +9,26 @@ class LowData
   class FilterCompiler
     def initialize(database:, schema:)
       @database = database
+      @schema = schema
       @links = NestingTree.new(schema:)
     end
 
     def apply(dataset:, source:)
+      check_foreign_keys!(source:)
       conditions(source:).reduce(dataset) { |filtered, condition| filtered.where(condition) }
     end
 
     private
+
+    # A symbol in round brackets names a foreign key for NestedJoin, so it must be one of the table's.
+    def check_foreign_keys!(source:)
+      foreign_keys = @schema.foreign_keys(table: source.table).flat_map { |foreign_key| foreign_key[:columns] }
+      invalid = (source.filter.foreign_keys - foreign_keys).first
+      return unless invalid
+
+      raise ArgumentError, "#{source.table} has no #{invalid} foreign key. A symbol in round brackets names the foreign key " \
+                           'a nested join links by, e.g. Posts(:user_id). Filters are keywords, e.g. Posts(published: true)'
+    end
 
     def conditions(source:)
       table = source.table

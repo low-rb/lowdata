@@ -21,10 +21,10 @@ The above expression returns a list of posts with each post's user nested inside
 
 ⭐ **Syntax overview:**
 ```ruby
-Posts(published: true)[:title, User[:username]] ^ Col[created_at:] * 10
+Posts(published: true)[:title] + Users[:username] ^ Col[:created_at] * 10
 
-└─┬─┘└───────┬───────┘ └─┬──┘  └──────┬──────┘  └───────┬────────┘ └┬─┘
-Table     Filter       Column       Nesting            Sort        Limit
+└─┬─┘└───────┬───────┘└──┬───┘ └───────┬────────┘ └───────┬────────┘ └┬─┘
+Table     Filter      Column        Nesting             Sort        Limit
 ```
 
 ✨ **Special characters:**
@@ -117,18 +117,22 @@ Users[:username] + (Posts[:title] & Comments[:body] ^ Col[:body] * 2)
 
 Only the "many" side can nest a join, because joined rows can repeat the row they link to.
 
+When more than one of the join's tables links to the parent, name the foreign key to nest by in round brackets: `Users[:username] + (Posts(:user_id)[:title] & Likes[:id])` nests through `posts.user_id`, although likes have a `user_id` too.
+
 **Use case:** a many-to-many relationship through a join table, such as posts with their tags through `post_tags`. Nesting the join gives each post a flat list of tags, where `Posts + PostTags + Tags` would nest each tag inside its `post_tags` row:
 
 ```ruby
-Posts[:title, tags: PostTags[:created_at] & Tags[:name]]
+Posts[:title] + (PostTags[:created_at] & Tags[:name])
 
 # SELECT title, id FROM posts
 # SELECT post_tags.created_at, tags.name, post_tags.post_id AS lowdata_link FROM post_tags INNER JOIN tags ON (post_tags.tag_id = tags.id) WHERE (post_tags.post_id IN (...))
 # => [
-#   { title: 'Hello', tags: [{ created_at: 2026-10-01, name: 'ruby' }, { created_at: 2026-10-02, name: 'sql' }] },
-#   { title: 'World', tags: [] }
+#   { title: 'Hello', post_tags: [{ created_at: 2026-10-01, name: 'ruby' }, { created_at: 2026-10-02, name: 'sql' }] },
+#   { title: 'World', post_tags: [] }
 # ]
 ```
+
+The tags nest under `post_tags`, the table that links them to posts. To name them `tags`, nest the join [in square brackets](#inline-nesting) instead: `Posts[:title, tags: PostTags[:created_at] & Tags[:name]]`.
 
 ### Nesting under joins
 
@@ -208,7 +212,7 @@ Posts[:id, headline: :title]
 # => [{ id: 1, headline: 'Hello' }]
 ```
 
-As with [named nested tables](#inline-nesting), the key is what you get back and the value is where it comes from. Renames work in nested tables, joins and `Table[]`, and they go last in the brackets, because Ruby puts keywords after other arguments: `Users[Posts[:title], handle: :username]`.
+As with [named nested tables](#inline-nesting), the key is what you get back and the value is where it comes from. Renames work in nested tables, joins and `Table[]`, and they go last in the brackets, because Ruby puts keywords after other arguments: `Users[Posts[:title], handle: :username]`, or with `+`, `Users[handle: :username] + Posts[:title]`.
 
 A rename written backwards raises with the fix: `Posts[title: :headline]` raises "posts has no headline column. To rename title, write headline: :title". Sort by the column, not the new name: `Posts[headline: :title] ^ Col[:title]`.
 
@@ -274,11 +278,11 @@ Reviews(author: Users(username: 'alice'))[:rating] # A name picks the foreign ke
 # SELECT reviews.rating FROM reviews WHERE (EXISTS (SELECT 1 FROM users WHERE ((users.id = reviews.author_id) AND (users.username = 'alice'))))
 ```
 
-On a nested table a filter only filters the nested rows: `Users[:username, Posts(published: true)[:title]]` returns every user, each with their published posts. To filter both, reuse the filtered table:
+On a nested table a filter only filters the nested rows: `Users[:username] + Posts(published: true)[:title]` returns every user, each with their published posts. To filter both, reuse the filtered table:
 
 ```ruby
 published = Posts(published: true)
-Users(published)[:username, published[:title]] # only users with published posts, and only those posts
+Users(published)[:username] + published[:title] # only users with published posts, and only those posts
 
 # SELECT username, id FROM users WHERE (EXISTS (SELECT 1 FROM posts WHERE ((posts.user_id = users.id) AND (posts.published = TRUE))))
 # SELECT title, user_id FROM posts WHERE ((posts.published = TRUE) AND (user_id IN (...)))
@@ -322,10 +326,10 @@ Posts[:title] * 5
 
 Rows and pages count from 0, as in Ruby. Ruby binds `-`, `+`, `*`, `/` and `[]` tighter than `^`, so a limit travels with its sort and needs no parentheses, except around pages before `[page]`.
 
-Inside brackets, a sort or limit applies to each parent's nested rows:
+On a nested table, a sort or limit applies to each parent's nested rows:
 
 ```ruby
-Users[:username, Posts[:title] ^ -Col[:views] * 3] ^ Col[:username]
+Users[:username] + (Posts[:title] ^ -Col[:views] * 3) ^ Col[:username]
 
 # SELECT username, id FROM users ORDER BY users.username
 # SELECT * FROM (

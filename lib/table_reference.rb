@@ -39,8 +39,9 @@ class LowData
     #   Users(Posts), Users(~Posts)                # A table keeps rows with, or without, related rows.
     #   Users(Posts => 3..)                        # A table as a key keeps rows with that many related rows.
     #   Reviews(author: Users(username: 'alice'))  # A keyword with a table names the foreign key to follow.
+    #   Posts(:user_id)                            # A symbol names the foreign key a nested join links by.
     def where(*arguments, **keywords, &block)
-      related = arguments.map { |argument| related(key: nil, reference: argument) }
+      related = arguments.grep_v(Symbol).map { |argument| related(key: nil, reference: argument) }
       values = {}
 
       keywords.each do |key, value|
@@ -51,7 +52,7 @@ class LowData
       end
 
       conditions = block ? [Sequel.virtual_row(&block)] : []
-      with(filter: filter.merge(DataExpression::Filter.new(values:, conditions:, related:)))
+      with(filter: filter.merge(DataExpression::Filter.new(values:, conditions:, related:, foreign_keys: arguments.grep(Symbol))))
     end
 
     # `~Posts` keeps rows without related posts.

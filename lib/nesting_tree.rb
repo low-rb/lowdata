@@ -53,10 +53,10 @@ class LowData
 
     # Sets a child's key and link to its parent node. When either is a join, it links through its one table linked to the other.
     def linked(parent:, child:, key:)
-      table = parent.join ? parent.join.linked_table(others: child.tables, schema: @schema) : parent.source.table
-      joined = child.join&.link(parent: table, key:, tree: self, schema: @schema)
+      table = parent.join&.linked_table(others: child.tables, schema: @schema, foreign_keys: child.foreign_keys) || parent.source.table
+      joined = child.join&.link(parent: table, key:, tree: self, schema: @schema, foreign_keys: parent.foreign_keys)
       source, key, link = joined || [child.source, *link_to(parent: table, child: child.source.table, key:)]
-      child.with(source:, key:, link: parent.join ? link.with(parent_table: table) : link)
+      child.with(source:, key:, link: link.with(parent_table: parent.join && table))
     end
 
     # Links the operands into a tree from the first. Every operand must be linked, and only by one path.

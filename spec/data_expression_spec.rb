@@ -3,6 +3,7 @@
 require_relative '../lib/lowdata'
 require_relative 'helpers/database'
 require_relative 'fixtures/articles_data'
+require_relative 'fixtures/nested_joins_data'
 require_relative 'fixtures/posts_data'
 require_relative 'fixtures/users_data'
 
@@ -79,10 +80,10 @@ RSpec.describe LowData::DataExpression do
     end
 
     it 'returns the SQL of a nested join and the tables under a join' do
-      expect(repository.nest_join_limited.sql.split(";\n").last).to include(
+      expect(NestedJoinsData.new.nest_join_limited.sql.split(";\n").last).to include(
         'PARTITION BY `posts`.`user_id`', '(`posts`.`user_id` IN (...))'
       )
-      expect(repository.nest_after_join.sql.split(";\n").first).to include('`posts`.`id` AS \'lowdata_posts_id\'')
+      expect(NestedJoinsData.new.nest_after_join.sql.split(";\n").first).to include('`posts`.`id` AS \'lowdata_posts_id\'')
     end
 
     it 'raises for a dataset because it runs more than one query' do
@@ -107,107 +108,6 @@ RSpec.describe LowData::DataExpression do
 
     it 'raises when combined with other joins' do
       expect { repository.nest_then_left.sql }.to raise_error(LowData::JoinError, /can't be combined/)
-    end
-
-    describe 'with a join' do
-      it 'nests the joined rows as an array under the table that links to the parent' do
-        expect(repository.nest_join.to_a).to contain_exactly(
-          { username: 'alice', posts: [{ title: 'Hello', body: 'Nice' }] },
-          { username: 'bob', posts: [] },
-          { username: 'carol', posts: [] }
-        )
-      end
-
-      it 'keeps the rows the join keeps' do
-        expect(repository.nest_left_join.to_a).to include({ username: 'bob', posts: [{ title: 'World', body: nil }] })
-      end
-
-      it 'links through whichever joined table links to the parent' do
-        expect(repository.nest_join_reordered.to_a).to include({ username: 'alice', posts: [{ body: 'Nice', title: 'Hello' }] })
-      end
-
-      it 'loads the join with one query' do
-        queries = []
-        logger = Object.new
-        logger.define_singleton_method(:info) { |message| queries << message if message.include?('SELECT') }
-        database.loggers << logger
-
-        repository.nest_join.to_a
-
-        expect(queries.length).to eq(2)
-        expect(queries.last).to include('INNER JOIN `comments`')
-      end
-
-      it 'sorts and limits the joined rows per parent' do
-        database[:comments].insert(id: 3, post_id: 1, body: 'Again')
-
-        expect(repository.nest_join_sorted.to_a).to include(
-          { username: 'alice', posts: [{ title: 'Hello', body: 'Nice' }, { title: 'Hello', body: 'Again' }] }
-        )
-        expect(repository.nest_join_limited.to_a).to include({ username: 'alice', posts: [{ title: 'Hello', body: 'Again' }] })
-      end
-
-      it 'sorts the parents with a sort outside the parentheses' do
-        expect { repository.nest_join_sorted_outside.to_a }.to raise_error(LowData::JoinError, /No table in users has a body column/)
-      end
-
-      it 'filters the joined rows' do
-        expect(repository.nest_join_filtered.to_a).to include(
-          { username: 'alice', posts: [] },
-          { username: 'bob', posts: [{ title: 'World', body: nil }] }
-        )
-      end
-
-      it 'nests a join in brackets, under a name' do
-        expect(repository.nest_join_in_brackets.to_a).to match_array(repository.nest_join.to_a)
-        expect(repository.nest_join_named.to_a).to include({ username: 'alice', written: [{ title: 'Hello', body: 'Nice' }] })
-      end
-
-      it 'raises on the "one" side, where joined rows can repeat the linked row' do
-        expect { repository.nest_join_one_side.to_a }.to raise_error(LowData::JoinError, /comments points to posts/)
-      end
-
-      it 'raises when more than one joined table links to the parent' do
-        expect { repository.nest_join_both_link.to_a }.to raise_error(LowData::JoinError, /posts and likes both link to users/)
-      end
-
-      it 'raises when a joined table has no foreign key' do
-        expect { repository.nest_join_unlinked.to_a }.to raise_error(LowData::JoinError, /No foreign key links tags/)
-      end
-
-      it 'nests tables under each joined row' do
-        expect(repository.nest_after_join.to_a).to contain_exactly(
-          { username: 'alice', title: 'Hello', comments: [{ body: 'Nice' }] },
-          { username: 'bob', title: 'World', comments: [] }
-        )
-      end
-
-      it 'nests the table a joined row points to as an object' do
-        expect(repository.nest_under_join_one.to_a).to eq([{ title: 'Hello', body: 'Nice', user: { username: 'alice' } }])
-      end
-
-      it 'sorts the joined rows that tables nest under' do
-        expect(repository.nest_under_join_sorted.to_a.map { |row| row[:title] }).to eq(%w[World Hello])
-      end
-
-      it 'loads the join and each table under it with one query each' do
-        queries = []
-        logger = Object.new
-        logger.define_singleton_method(:info) { |message| queries << message if message.include?('SELECT') }
-        database.loggers << logger
-
-        repository.nest_after_join.to_a
-
-        expect(queries.length).to eq(2)
-      end
-
-      it 'raises when more than one joined table links to the nested table' do
-        expect { repository.nest_under_join_both_link.to_a }.to raise_error(LowData::JoinError, /users and posts both link to likes/)
-      end
-
-      it 'raises when the join holds nested tables' do
-        expect { repository.nest_join_nested.to_a }.to raise_error(LowData::JoinError, /can't be combined/)
-      end
     end
 
     it 'raises when combined with Table[]' do
@@ -332,8 +232,8 @@ RSpec.describe LowData::DataExpression do
       expect { repository.filter_in_square_brackets }.to raise_error(ArgumentError, /Filters go in round brackets/)
     end
 
-    it 'raises for arguments that are not filters or tables' do
-      expect { repository.filter_positional }.to raise_error(ArgumentError, /Round brackets take filters and tables/)
+    it 'raises for a symbol that is not a foreign key' do
+      expect { repository.filter_not_foreign_key.sql }.to raise_error(ArgumentError, /posts has no title foreign key. A symbol/)
     end
 
     it 'raises NoMethodError for names that are not tables' do

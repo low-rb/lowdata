@@ -14,13 +14,15 @@ class LowData
   #   (Posts[:title] / 20)[2]            # LIMIT 20 OFFSET 40
   class DataExpression < ::Expressions::Expression
     # The filters in a table's round brackets: `Posts(published: true) { views > 100 }`. See FilterCompiler.
-    Filter = ::Data.define(:values, :conditions, :related) do
-      def initialize(values: {}, conditions: [], related: [])
+    # `foreign_keys` aren't filters: they name the foreign key a nested join links by, `Posts(:user_id)`. See NestedJoin.
+    Filter = ::Data.define(:values, :conditions, :related, :foreign_keys) do
+      def initialize(values: {}, conditions: [], related: [], foreign_keys: [])
         super
       end
 
       def merge(other)
-        with(values: values.merge(other.values), conditions: conditions + other.conditions, related: related + other.related)
+        with(values: values.merge(other.values), conditions: conditions + other.conditions, related: related + other.related,
+             foreign_keys: foreign_keys + other.foreign_keys)
       end
     end
     # A table in another table's round brackets, keeping rows with `count` related rows: `Users(Posts => 3..)`.

@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    lowdata (0.2.0)
+    lowdata (0.3.0)
       expressions (~> 0.4)
       lowtype (~> 1.6)
       sequel (~> 5.0)
@@ -106,7 +106,7 @@ GEM
     sqlite3 (2.10.1-x86_64-darwin)
     sqlite3 (2.10.1-x86_64-linux-gnu)
     sqlite3 (2.10.1-x86_64-linux-musl)
-    trees (0.4.0)
+    trees (0.3.5)
     trilogy (2.13.1)
       bigdecimal
     tsort (0.2.0)
@@ -152,7 +152,7 @@ CHECKSUMS
   language_server-protocol (3.17.0.6) sha256=5ef2c0c138f8267e1bc631d3328347d354f96724b0af22f2c79516120443b7f0
   lint_roller (1.1.0) sha256=2c0c845b632a7d172cb849cc90c1bce937a28c5c8ccccb50dfd46a485003cc87
   logger (1.7.0) sha256=196edec7cc44b66cfb40f9755ce11b392f21f7967696af15d274dde7edff0203
-  lowdata (0.2.0)
+  lowdata (0.3.0)
   lowkey (0.7.0) sha256=f058768d33ece32fe30690839b0f1cb80db2679b25617777cfd68301a951eebb
   lowtype (1.6.0) sha256=f60b005a147a0c04390f4420b7e345c7477a5d7eb65c8b0e670112327d74981d
   parallel (2.3.0) sha256=f75a3e904101ce6a1ccb6b8dc800cbafd42166d83330192438dcf29395167a6f
@@ -195,7 +195,7 @@ CHECKSUMS
   sqlite3 (2.10.1-x86_64-darwin) sha256=00d1cd2e8ecff5ad9fffa0c97de59d4f85c5fc54eada2587d53ca0bd933b7a5d
   sqlite3 (2.10.1-x86_64-linux-gnu) sha256=661ecede31e23a412059cd8c684ed84e332f64f167e4a90902cf99e8ea2c8718
   sqlite3 (2.10.1-x86_64-linux-musl) sha256=67c7c5443a930157b4e148f0f4cb9ab998ee7ecfa8ce56879a6b56d1d742b2be
-  trees (0.4.0)
+  trees (0.3.5) sha256=adbcd976735a45eca6fdf253b7a4a0743d4b07e005cfed8c5e0028fb43ecfa9d
   trilogy (2.13.1) sha256=fbfb17c439b347e4240be70b80facf0f6f9c417b34c528179ff065b3d53635c9
   tsort (0.2.0) sha256=9650a793f6859a43b6641671278f79cfead60ac714148aabe4e3f0060480089f
   unicode-display_width (3.3.0) sha256=4b7aa66a4b11db50f6f7e98411215cd0dd10eaecb665d36eec5bcacb3fa0b613

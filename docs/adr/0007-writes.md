@@ -126,7 +126,8 @@ Changing every row stays possible through `dataset`, so it's always deliberate.
 
 - **`TableReference`** gets `<<`, `<=`, `[]=` and `delete`.
 - **`DataExpression`** gets `<<` and `<=` for a single table in square brackets, which choose the columns returned. Writing through a join or a nested expression raises.
-- **`<=` and the `expressions` gem:** `Expression` already defines `<=` with `lt_or_eq_*` hooks. `DataExpression` implements `lt_or_eq_value` for a hash or an array of hashes, and raises from `lt_or_eq_expression` and `lt_or_eq_type`, so `Posts[:id] <= Users[:id]` can't be mistaken for a comparison or a join.
+- **`<<` and the `expressions` gem:** from 0.4, `Expression#<<` calls its `append_*` hook on the expression itself and returns what the hook returns. `DataExpression` implements `append_value` to insert and return the rows, and raises from `append_expression` and `append_type`.
+- **`<=` and the `expressions` gem:** `Expression#<=` builds: it calls its `lt_or_eq_*` hook on a copy and returns the copy, as the gem's other comparison operators do. An upsert has to run immediately and return the rows, so `DataExpression` overrides `<=` itself rather than using the hooks. The gem keeps `<=` as a building operator, because it reads as a comparison for most expression types. The override raises for anything but a hash or an array of hashes, so `Posts[:id] <= Users[:id]` can't be mistaken for a comparison or a join.
 
 ## Options considered
 

@@ -329,14 +329,11 @@ Posts[:title] ^ -Col[:views] + Col[:title]
 Posts[:title] * 10
 # SELECT posts.title FROM posts LIMIT 10
 
-Posts[:title][20...40]
+Posts[:title] ^ -Col[:views][20...40]
 # SELECT posts.title FROM posts ORDER BY posts.views DESC LIMIT 20 OFFSET 20
 
 (Posts[:title] / 20)[2] # the third page of 20
 # SELECT posts.title FROM posts LIMIT 20 OFFSET 40
-
-Posts[:title] * 5
-# SELECT posts.title FROM posts LIMIT 5
 ```
 
 Rows and pages count from 0, as in Ruby. Ruby binds `-`, `+`, `*`, `/` and `[]` tighter than `^`, so a limit travels with its sort and needs no parentheses, except around pages before `[page]`.

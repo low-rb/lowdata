@@ -11,6 +11,10 @@ Minor features that don't break backwards compatibility are released as patches.
 
 - A bare table, `Posts`, selects every column, and empty brackets, `Posts[]`, select none. Replace `Posts[]` with `Posts`
 
+### Fixed
+
+- Assigning a hash to one column, `Posts(id: 1)[:title] = { ... }`, raises instead of storing `0`
+
 ## 0.2.0
 
 ### Added

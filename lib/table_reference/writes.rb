@@ -44,10 +44,18 @@ class LowData
       def assignments(columns:, value:)
         check_columns!(columns:)
         return assigned_hash(value:) if columns.empty?
-        return { columns.first => value } if columns.one?
+        return { columns.first => assigned_value(value:) } if columns.one?
         return columns.zip(value).to_h if value.is_a?(Array) && value.length == columns.length
 
         raise ArgumentError, "#{columns.length} columns take #{columns.length} values, e.g. Posts(id: 1)[:title, :body] = ['New', '...']"
+      end
+
+      # Sequel would write a hash into one column as a condition, storing 0 or 1, so a hash for one column raises.
+      def assigned_value(value:)
+        return value unless value.is_a?(Hash)
+
+        raise ArgumentError, 'One column takes one value, not a hash. To set the columns in a hash, use empty brackets, e.g. ' \
+                             "Posts(id: 1)[] = { title: 'New' }"
       end
 
       def assigned_hash(value:)

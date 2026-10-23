@@ -199,6 +199,12 @@ RSpec.describe 'Writing with <<, <=, []= and delete' do
       expect { repository.retitle_mismatched(1) }.to raise_error(ArgumentError, /2 columns take 2 values/)
     end
 
+    it 'raises for a hash assigned to one column, rather than writing it as a condition' do
+      expect { repository.retitle(1, { title: 'Changed', views: 99 }) }
+        .to raise_error(ArgumentError, /One column takes one value, not a hash/)
+      expect(database[:posts][id: 1]).to include(title: 'Hello', views: 10)
+    end
+
     it 'raises for empty brackets without a hash' do
       expect { repository.retitle_hash(1, 'Changed') }.to raise_error(ArgumentError, /Empty brackets take a hash/)
     end

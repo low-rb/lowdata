@@ -378,6 +378,23 @@ Round brackets choose rows and square brackets choose columns, as in reads, and 
 
 `Table` is the repository's table in writes too, so `def create(post) = Table << post` inserts into `posts` in `PostsData`.
 
+### What goes in and what comes out
+
+Round brackets choose the rows, square brackets choose what comes out, and the value on the right is what goes in. Read each row left to right for the whole expression:
+
+| Filter | Output | Input |
+|---|---|---|
+| `Posts(published: true)` | `[:title]` | |
+| `Posts(published: true)` | every column | |
+| `Posts` | the primary key | `<< { title: 'Hello' }` |
+| `Posts` | `[:id, :created_at]` | `<< params.slice(:title, :body)` |
+| `Posts` | `[]`, nothing | `<< rows` |
+| `Posts(slug: 'hello')` | `[:id]` | `<= { title: 'Hello' }` |
+| `Posts(id: 1)` | | `[:title] = 'New'` |
+| `Posts(id: 1)` | the number deleted | `.delete` |
+
+Square brackets never filter what goes in, so choose the columns to write from params yourself, as with Rails' `permit` or Prisma's `data`. That keeps columns such as `id` coming out without letting params set them. Update is the exception that reads naturally: `Posts(id: 1)[:title] = 'New'` sets the title, and returns nothing for the brackets to choose.
+
 ### Insert
 
 `<<` adds rows, as it does to a Ruby array. It returns the new row's primary key, or the columns in square brackets:

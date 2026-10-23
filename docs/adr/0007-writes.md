@@ -190,6 +190,14 @@ Writes could build an expression that runs on a method call, so `sql` could show
 - ❌ `Posts << post` doing nothing until another call is a silent failure, and nothing else in Ruby's `<<` works that way.
 - **Outcome:** rejected. Previewing a write's SQL is left open (see Out of scope).
 
+### Square brackets as an input filter
+
+`Posts[:title, :body] << params` writing only title and body from `params`, as Rails' `permit` and Sequel's `update_fields` do.
+
+- ✅ One meaning for square brackets: the columns that go in and come out.
+- ❌ Output and input usually differ. The generated `id` should come out, but `params` should never set it, so one list can't serve both. Prisma (`data` and `select`), Rails (`permit` and `returning:`) and SQL (`INSERT INTO posts (...)` and `RETURNING`) keep them separate for this reason.
+- **Outcome:** rejected. Square brackets choose what comes out, the value is what goes in, and `params.slice(:title, :body)` filters it. Update is the exception, because `Posts(id: 1)[:title] = 'New'` names the column it sets and returns nothing. A hash assigned to one column raises rather than being filtered by the brackets.
+
 ## Out of scope
 
 - **Nested writes:** inserting a user with their posts, e.g. `Users << { username: 'alice', posts: [...] }`.

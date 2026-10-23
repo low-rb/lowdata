@@ -438,7 +438,7 @@ Posts(slug: 'hello') <= { title: 'Hello' }
 Posts <= { id: 7, title: 'Hello' } # Without round brackets, the primary key matches.
 ```
 
-The matched columns need a unique index. Round brackets take plain values only, because a range or a block can't name one row. On MySQL, the matched columns must be the table's only unique key, because `ON DUPLICATE KEY UPDATE` matches any of them.
+The matched columns need a unique index. Round brackets take plain values only, because a range or a block can't name one row. On MySQL, `ON DUPLICATE KEY UPDATE` matches any unique key, so the matched columns must be one, and the row mustn't set every column of another. A key the row leaves out, such as an auto-increment `id`, can't match.
 
 ⚠️ **RuboCop's autocorrect can break an upsert.** `Lint/Void` removes `<= row` from an upsert that isn't a method's last line, and `Style/YodaCondition` reverses `Tags <= row` to `row >= Tags`. Turn both off with LowData's config:
 

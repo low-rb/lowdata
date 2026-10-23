@@ -18,6 +18,8 @@ require_relative 'nesting'
 require_relative 'nesting_tree'
 require_relative 'nesting_path'
 require_relative 'query_compiler'
+require_relative 'writer'
+require_relative 'expression_writes'
 require_relative 'table_reference'
 
 class LowData

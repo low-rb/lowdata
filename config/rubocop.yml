@@ -1,0 +1,14 @@
+# Inherit in an app that writes with LowData, so RuboCop's autocorrect can't change or remove a write:
+#
+#   inherit_gem:
+#     lowdata: config/rubocop.yml
+#
+# See ADR 0007.
+
+# `Posts(slug: 'hello') <= row` on its own line looks unused, and `rubocop -A` deletes the `<= row`, removing the upsert.
+Lint/Void:
+  Enabled: false
+
+# `Tags <= row` looks like a comparison with the constant first, and `rubocop -A` reverses it to `row >= Tags`.
+Style/YodaCondition:
+  Enabled: false

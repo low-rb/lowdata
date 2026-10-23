@@ -34,6 +34,10 @@ Style/DefWithParentheses:
 Lint/Void:
   Enabled: false
 
+# Support upserts like `Tags <= row`, which autocorrect would reverse. See config/rubocop.yml.
+Style/YodaCondition:
+  Enabled: false
+
 # Support Array[]/Hash[] syntax.
 Style/RedundantArrayConstructor:
   Enabled: false

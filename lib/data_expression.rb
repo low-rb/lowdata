@@ -67,7 +67,6 @@ class LowData
     SORT_MESSAGE = 'Sort by columns with Col[], e.g. Posts[:title] ^ Col[:views], not %<value>s'
     NESTED_DATASET_MESSAGE = 'Nested tables load with one query per table, so they have no single dataset. Call sql to see ' \
                              'each query, or to_a to load them'
-
     def dataset(database: LowData.database)
       raise Error, NESTED_DATASET_MESSAGE if nested?
 

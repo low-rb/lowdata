@@ -353,6 +353,98 @@ Users[:username] + (Posts[:title] ^ -Col[:views] * 3) ^ Col[:username]
 
 After `&`, a sort applies to the joined rows, using whichever table has the column. `<`, `>` and `<=>` bind looser than `^`, so put the join in parentheses: `(Users[] < Posts[]) ^ Col[:username]`. After a `+` chain, a sort applies to the first table.
 
+## Writes
+
+Round brackets choose rows and square brackets choose columns, as in reads, and writes run straight away:
+
+| Write | Syntax | Returns |
+|---|---|---|
+| Insert | `Posts << { title: 'Hello' }` | the new row |
+| Upsert | `Posts(slug: 'hello') <= { title: 'Hello' }` | the row |
+| Update | `Posts(id: 1)[:title] = 'New'` | the assigned value |
+| Delete | `Posts(id: 1).delete` | the number of rows deleted |
+
+`Table` is the repository's table in writes too, so `def create(post) = Table << post` inserts into `posts` in `PostsData`.
+
+### Insert
+
+`<<` adds rows, as it does to a Ruby array. It returns the new row's primary key, or the columns in square brackets:
+
+```ruby
+Posts << { title: 'Hello', user_id: 1 }
+# INSERT INTO posts (title, user_id) VALUES ('Hello', 1) RETURNING id
+# => { id: 7 }
+
+Posts[:id, :created_at] << { title: 'Hello', user_id: 1 }
+# => { id: 7, created_at: 2026-10-22 ... }
+
+Posts << [{ title: 'Hello' }, { title: 'World' }]
+# => [{ id: 7 }, { id: 8 }], in one transaction
+```
+
+An insert adds new rows, so round brackets raise: `Posts(slug: 'hello') << row` is an upsert.
+
+### Upsert
+
+`<=` adds a row, or makes the matching one equal to it. Round brackets name the columns to match on, and their values are written too:
+
+```ruby
+Posts(slug: 'hello') <= { title: 'Hello' }
+# INSERT INTO posts (slug, title) VALUES ('hello', 'Hello')
+#   ON CONFLICT (slug) DO UPDATE SET title = excluded.title RETURNING id
+# => { id: 7 }
+
+Posts <= { id: 7, title: 'Hello' } # Without round brackets, the primary key matches.
+```
+
+The matched columns need a unique index. Round brackets take plain values only, because a range or a block can't name one row. On MySQL, the matched columns must be the table's only unique key, because `ON DUPLICATE KEY UPDATE` matches any of them.
+
+⚠️ **RuboCop's autocorrect can break an upsert.** `Lint/Void` removes `<= row` from an upsert that isn't a method's last line, and `Style/YodaCondition` reverses `Tags <= row` to `row >= Tags`. Turn both off with LowData's config:
+
+```yaml
+# .rubocop.yml
+inherit_gem:
+  lowdata: config/rubocop.yml
+```
+
+Under `ruby -w`, an upsert that isn't a method's last line or assigned also warns `possibly useless use of <= in void context`. To silence it, use the [warning](https://github.com/jeremyevans/ruby-warning) gem: `Warning.ignore(/useless use of <= in void context/)`.
+
+### Update
+
+`[]=` changes the rows chosen by the round brackets, which take any filter:
+
+```ruby
+Posts(id: 1)[:title] = 'New'
+# UPDATE posts SET title = 'New' WHERE (posts.id = 1)
+
+Posts(id: 1)[:title, :body] = ['New', '...']
+Posts(published: false) { created_at < cutoff }[] = { archived: true }
+Users(~Posts)[:active] = false
+```
+
+Ruby makes an assignment return its right-hand side, so an update returns the assigned value rather than a count.
+
+### Delete
+
+`delete` removes the rows chosen by the round brackets, and returns how many. It's a word rather than an operator because a delete can't be undone, so it should be easy to spot and to search for:
+
+```ruby
+Posts(id: 1).delete
+# DELETE FROM posts WHERE (posts.id = 1)
+# => 1
+```
+
+### Every row
+
+Without round brackets, an update or delete would change every row, so it raises:
+
+```ruby
+Posts[:archived] = true # Raises: Choose the posts to update with round brackets, e.g. Posts(id: 1)[:archived] = true
+Posts.delete            # Raises: Choose the posts to delete with round brackets, e.g. Posts(id: 1).delete
+```
+
+To change every row on purpose, use the dataset: `Posts[].dataset.update(archived: true)`.
+
 ## Syntax
 
 ⭐ **Overview:**

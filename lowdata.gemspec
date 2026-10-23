@@ -18,7 +18,7 @@ Gem::Specification.new do |spec|
 
   # Specify which files should be added to the gem when it is released.
   spec.files = Dir.chdir(File.expand_path(__dir__)) do
-    Dir.glob('lib/**/*')
+    Dir.glob('{lib,config}/**/*')
   end
 
   spec.require_paths = ['lib']

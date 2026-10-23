@@ -1,6 +1,6 @@
 # ADR 0007: Writing with `<<`, `<=`, `[]=` and `delete`
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-22
 
 ## Context
@@ -16,7 +16,7 @@ end
 
 Writes should read like the rest of LowData: round brackets choose rows, square brackets choose columns, and operators do the work. A destructive write should also be obvious to anyone reading the code, including people who don't know LowData.
 
-## Decision (proposed)
+## Decision
 
 | Operation | Syntax | SQL | Returns |
 |---|---|---|---|
@@ -124,8 +124,9 @@ Changing every row stays possible through `dataset`, so it's always deliberate.
 
 ### Where the writes are defined
 
+- **`Writer`** runs every write, and **`WriteChecks`** checks a write before it runs.
 - **`TableReference`** gets `<<`, `<=`, `[]=` and `delete`.
-- **`DataExpression`** gets `<<` and `<=` for a single table in square brackets, which choose the columns returned. Writing through a join or a nested expression raises.
+- **`DataExpression`** gets `<<` and `<=` for a single table in square brackets, which choose the columns returned, from its `Writes` module. Writing through a join, a nested expression or a sorted expression raises.
 - **`<<` and the `expressions` gem:** from 0.4, `Expression#<<` calls its `append_*` hook on the expression itself and returns what the hook returns. `DataExpression` implements `append_value` to insert and return the rows, and raises from `append_expression` and `append_type`.
 - **`<=` and the `expressions` gem:** `Expression#<=` builds: it calls its `lt_or_eq_*` hook on a copy and returns the copy, as the gem's other comparison operators do. An upsert has to run immediately and return the rows, so `DataExpression` overrides `<=` itself rather than using the hooks. The gem keeps `<=` as a building operator, because it reads as a comparison for most expression types. The override raises for anything but a hash or an array of hashes, so `Posts[:id] <= Users[:id]` can't be mistaken for a comparison or a join.
 
@@ -195,12 +196,14 @@ Writes could build an expression that runs on a method call, so `sql` could show
 - **Writes through joins**, such as updating posts by their user's columns. Related-table filters (`Posts(user: Users(username: 'alice'))[:title] = ...`) cover most of this already.
 - **Previewing a write's SQL** without running it.
 - **Updating with expressions**, such as `views = views + 1`.
+- **Records:** writing a mutable, model-like object instead of a hash, e.g. `Posts(id: 1)[] = post`. Ruby makes an assignment return its right-hand side, so `[]=` can't return the updated rows, but it could fill the object in from `RETURNING`, setting `post.updated_at` as ActiveRecord's `save` does. Insert and upsert could fill in `id` and timestamps the same way. Open questions: a mutable record type, since `Data` objects are immutable; what to do when the round brackets choose more than one row; which columns to fill in; and reading back on MySQL.
 - **Transactions.**
 
 ## Consequences
 
 - **Ruby's void-context warning:** under `ruby -w`, a `<=` whose result is unused warns `possibly useless use of <= in void context`. Plain `ruby` is silent, and so is `<=` on a method's last line or in an assignment, which is the usual place for a repository's upsert. The warning has no category to turn off, so the README shows how to filter it with `Warning.ignore` from the `warning` gem. `<<`, `[]=` and `delete` don't warn.
-- **RuboCop autocorrect deletes the upsert:** `Lint/Void` flags a mid-method `Posts(...) <= row` as autocorrectable, and `rubocop -A` turns it into a bare `Posts(...)`, silently removing the write. `Lint/Void` has no per-operator setting, so LowData ships a RuboCop config for apps to `inherit_gem` that disables it, and the README's upsert section says so first.
+- **RuboCop autocorrect deletes the upsert:** `Lint/Void` flags a mid-method `Posts(...) <= row` as autocorrectable, and `rubocop -A` turns it into a bare `Posts(...)`, silently removing the write. `Lint/Void` has no per-operator setting, so LowData ships a RuboCop config for apps to `inherit_gem`, `config/rubocop.yml`, that disables it. The README's upsert section says so first.
+- **RuboCop autocorrect reverses the upsert:** `Style/YodaCondition` reads `Tags <= row` as a comparison with the constant first, and `rubocop -A` rewrites it to `row >= Tags`, which no longer upserts. The same config disables it.
 - **Return values differ:** insert and upsert return rows, delete returns a count, and update returns the assigned values, because of Ruby's assignment rule.
 - **Databases differ:** `RETURNING` (Postgres, SQLite 3.35+) is emulated on MySQL by reading back, and MySQL's upsert is limited to tables where the named columns are the only unique key.
 - **Writes mix operators and a method:** adding and changing rows use operators, and deleting uses `delete`. The README explains why, so the exception reads as deliberate.

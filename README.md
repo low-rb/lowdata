@@ -1,9 +1,10 @@
 <a href="https://rubygems.org/gems/lowdata" title="Install gem"><img src="https://badge.fury.io/rb/lowdata.svg" alt="Gem version" height="18"></a>
 
-LowData follows the repository pattern with a twist; *Data Expressions*. Data Expressions are just that, they are values, that represent a table and its columns (`TableName[:column]`). LowData then uses simple arithmetic to connect these tables together:
+LowData is the repository pattern with a twist: *Data Expressions*. An expression represents a table and its columns; `TableName[:column]`, and operators combine them:
 - `+` combines tables (usually [nesting](#nesting) data into the parent)
-- `*` describes how many results you want
-- `&`, `<`,`>` [joins](#joins) tables together
+- `^` [sorts](#sorting) and `*` describes how many results you want
+- `&`, `<`, `>`, `<=>` [joins](#joins) tables together
+- `<<`, `<=`, `[]=` [write](#writes) rows
 
 **For example this expression:**
 ```ruby
@@ -30,7 +31,7 @@ SELECT username, id FROM users WHERE (id IN (...))
 
 ## Nesting
 
-### Flat nesting
+### Chained nesting
 
 `+` starts from the first table and nests each related table under the row it belongs to, following the foreign keys in your database:
 
@@ -49,7 +50,7 @@ Users[:username] + Posts[:title] + Comments[:body]
 # ]
 ```
 
-Every row of the first table appears exactly once, so rows never repeat or drop out. Each table nests in the table written before it, so the expression has the shape of the result. Tables nested side by side go in an array:
+Each row of the first table appears once, and each table nests in the one before it, so the expression has the shape of the result. Put tables side by side in an array:
 
 ```ruby
 Posts[:title] + [Comments[:body], Likes]
@@ -60,12 +61,12 @@ Posts[:title] + [Comments[:body], Likes]
 # => [{ title: 'Hello', comments: [{ body: 'Nice' }], likes: [{ id: 1, ... }, { id: 2, ... }] }]
 ```
 
-An array's elements can be chains, and an array ends a chain: `Users + [Posts + Comments, Orders]` nests posts with their comments, and orders, in each user. A table can also reach back to an earlier table by naming its foreign key in round brackets: `Users + Posts + Orders(:user_id)` nests orders in users, beside posts.
+Array items can be chains: `Users + [Posts + Comments, Orders]`. To nest in an earlier table, name its foreign key: `Users + Posts + Orders(:user_id)` nests orders in users.
 
 > [!NOTE]
-> **`+` follows position. Foreign keys only decide how each table links to the one before it.**
+> **`+` follows position. Foreign keys only link each table to the one before it.**
 >
-> In `Users + Posts + Comments`, comments link to posts by `comments.post_id`. If comments also have a `user_id`, it's ignored, because comments are written next to posts, not users. So a foreign key added between other tables can't change or break the expression.
+> In `Users + Posts + Comments`, comments link to posts by `comments.post_id`, even if they also have a `user_id`. So adding a foreign key elsewhere can't change the result.
 
 ### Inline nesting
 
@@ -82,7 +83,7 @@ Users[:username, Posts[:title, Likes]]
 
 `+` is another way to write this: `Users[:username] + Posts[:title] + Likes` returns the same data as the example above, and `Posts[:title] + Users[:username]` the same as `Posts[:title, Users[:username]]`.
 
-A keyword names a nested table. On the "one" side the name also picks the foreign key, so the same table can nest twice:
+A keyword names a nested table, and `author:` follows `author_id`, so the same table can nest twice:
 
 ```ruby
 Reviews[:rating, author: Users[:username], editor: Users[:username]]
@@ -105,7 +106,7 @@ Users[:username] + (Posts[:title] & Comments[:body])
 # => [{ username: 'alice', posts: [{ title: 'Hello', body: 'Nice' }] }, { username: 'bob', posts: [] }]
 ```
 
-The join keeps the rows its operator keeps, so `<` would also keep posts without comments. A join can also nest in brackets, and filters apply to the joined rows.
+The operator decides which rows the join keeps: `<` also keeps posts without comments. Joins can nest in brackets too, and filters apply to the joined rows.
 
 A sort or limit inside the parentheses applies to each parent's joined rows, by a column from any table in the join:
 
@@ -127,9 +128,9 @@ Users[:username] + (Posts[:title] & Comments[:body] ^ Col[:body] * 2)
 
 Only the "many" side can nest a join, because joined rows can repeat the row they link to.
 
-Because the join links through the table next to the `+`, `Users[:username] + (Posts[:title] & Likes[:id])` nests through `posts.user_id`, although likes have a `user_id` too. To link through another of its tables, name its foreign key: `Likes(:user_id)`.
+`Users[:username] + (Posts[:title] & Likes[:id])` links through `posts.user_id`, the table next to the `+`, even though likes have a `user_id` too. To link through likes instead, write `Likes(:user_id)`.
 
-**Use case:** a many-to-many relationship through a join table, such as posts with their tags through `post_tags`. Nesting the join gives each post a flat list of tags, where `Posts + PostTags + Tags` would nest each tag inside its `post_tags` row:
+**Use case:** many-to-many, such as posts and tags through `post_tags`. Nesting the join gives each post a flat list of tags, rather than tags inside `post_tags` rows:
 
 ```ruby
 Posts[:title] + (PostTags[:created_at] & Tags[:name])
@@ -142,11 +143,11 @@ Posts[:title] + (PostTags[:created_at] & Tags[:name])
 # ]
 ```
 
-The tags nest under `post_tags`, the table that links them to posts. To name them `tags`, nest the join [in square brackets](#inline-nesting) instead: `Posts[:title, tags: PostTags[:created_at] & Tags[:name]]`. To leave out the join table's columns, give it empty brackets: `Posts[:title, tags: PostTags[] & Tags[:name]]` returns `tags: [{ name: 'ruby' }, { name: 'sql' }]`.
+The tags nest under `post_tags`. To call them `tags`, nest the join [in square brackets](#inline-nesting): `Posts[:title, tags: PostTags[:created_at] & Tags[:name]]`. Use `PostTags[]` to leave out its columns, returning `tags: [{ name: 'ruby' }, { name: 'sql' }]`.
 
 ### Nesting under joins
 
-Tables can also nest under a join. Each joined row gets its own nested rows, through the join's last table, the one written next to the `+`:
+Tables can nest under a join too. Each joined row gets its own nested rows, linked through the join's last table:
 
 ```ruby
 (Users[:username] & Posts[:title]) + Comments[:body]
@@ -204,15 +205,15 @@ Users[:username] <=> Posts[:title]
 # SELECT users.username, posts.title FROM users FULL JOIN posts ON (posts.user_id = users.id)
 ```
 
-MySQL has no `FULL JOIN`, so `<=>` raises there. Use `<` or `>` for a left or right join.
+MySQL has no `FULL JOIN`, so `<=>` raises there; use `<` or `>` instead.
 
-The `ON` clause comes from the foreign keys in your database. Each table joins to the table written before it, using only the foreign keys between the two. To join to an earlier table, name its foreign key: `Posts[:title] & Users[:username] & Orders(:user_id)[:total]` joins orders to users.
+The `ON` clause comes from your foreign keys, and each table joins to the one before it. To join to an earlier table, name its foreign key: `Posts[:title] & Users[:username] & Orders(:user_id)[:total]` joins orders to users.
 
-Ruby evaluates `&` before `<` and `>`, so add parentheses when mixing operators: `(Users < Posts) & Comments`. `+` returns nested data rather than rows, so its result can't be joined, but a join can be [nested with `+`](#nesting-joins).
+Ruby runs `&` before `<` and `>`, so mix them with parentheses: `(Users < Posts) & Comments`. `+` returns nested data, so it can't be joined, but a join can be [nested](#nesting-joins).
 
 ## Columns
 
-Square brackets choose a table's columns. A table on its own is every column, and empty brackets are none:
+Square brackets choose columns. No brackets means every column, and empty brackets mean none:
 
 | Expression | Columns | SQL |
 |---|---|---|
@@ -220,11 +221,11 @@ Square brackets choose a table's columns. A table on its own is every column, an
 | `Posts[:title]` | the ones listed | `SELECT posts.title FROM posts` |
 | `Posts[]` | none | – |
 
-A table on its own works anywhere a table with brackets does: `Users[:username] + Posts`, `Users[:username, Posts]`, `Posts ^ Col[:views]` or `def all = Posts(published: true)`. Empty brackets keep a table out of the result while it still links and filters rows, so `Users[] & Posts[:title]` returns only titles, and a nested table with empty brackets nests an empty hash for each related row. A query with no columns at all, such as `Posts[]` on its own or as the first table, raises.
+A table without brackets works anywhere: `Users[:username] + Posts`, `Users[:username, Posts]` or `Posts ^ Col[:views]`. Empty brackets keep a table out of the result while it still links and filters rows: `Users[] & Posts[:title]` returns only titles. A query with no columns at all, such as `Posts[]` alone, raises.
 
 ## Renaming
 
-Rows are hashes, so when joined tables share a column name, only one value can be returned. A keyword with a symbol returns a column under a new name:
+Rows are hashes, so joined tables can't both return an `id`. Rename a column with a keyword:
 
 ```ruby
 Users[:username, user_id: :id] & Posts[:title, post_id: :id]
@@ -236,9 +237,9 @@ Posts[:id, headline: :title]
 # => [{ id: 1, headline: 'Hello' }]
 ```
 
-As with [named nested tables](#inline-nesting), the key is what you get back and the value is where it comes from. Renames work in nested tables, joins and `Table[]`, and they go last in the brackets, because Ruby puts keywords after other arguments: `Users[Posts[:title], handle: :username]`, or with `+`, `Users[handle: :username] + Posts[:title]`.
+The key is the new name and the value is the column. Renames work in nested tables, joins and `Table[]`, and go last in the brackets: `Users[Posts[:title], handle: :username]`.
 
-A rename written backwards raises with the fix: `Posts[title: :headline]` raises "posts has no headline column. To rename title, write headline: :title". Sort by the column, not the new name: `Posts[headline: :title] ^ Col[:title]`.
+A backwards rename, `Posts[title: :headline]`, raises with the fix. Sort by the column, not the new name: `Posts[headline: :title] ^ Col[:title]`.
 
 ## Data Inversion
 
@@ -254,7 +255,7 @@ class PostsData < LowData
 end
 ```
 
-This expression returns the same data as the `Posts + Users` example above, flattened into one row per post. It's smart enough to know that we're in a `Posts` repository, and that our `Posts` table has a foreign key of `user_id` to the `Users` table. LowData then connects `:username` to this table automatically.
+This returns the `Posts + Users` example above, flattened to one row per post. In `PostsData`, `Table` is posts, and LowData finds `:username` in users through `posts.user_id`.
 
 ## Filters
 
@@ -274,7 +275,7 @@ Posts(deleted_at: nil)[:title]
 # SELECT posts.title FROM posts WHERE (posts.deleted_at IS NULL)
 ```
 
-A block holds conditions that need more than a value. It's a [Sequel virtual row](https://sequel.jeremyevans.net/rdoc/files/doc/virtual_rows_rdoc.html) and a variable references a column:
+A block holds more complex conditions, where a name is a column ([Sequel virtual rows](https://sequel.jeremyevans.net/rdoc/files/doc/virtual_rows_rdoc.html)):
 
 ```ruby
 Posts { (views > 100) | featured }[:title]
@@ -284,7 +285,7 @@ Posts(published: true) { views > minimum }[:title]
 # SELECT posts.title FROM posts WHERE ((posts.published = TRUE) AND (posts.views > 50)), when minimum is 50
 ```
 
-Combine conditions with `&` and `|`, not `&&` and `||`: Ruby can't overload `&&` and `||`, so `views > 100 && featured` silently becomes `featured`. The block can read local variables, but not the repository's methods or instance variables unless it takes an argument: `Posts { |post| post.views > minimum_views }`.
+Use `&` and `|`, not `&&` and `||`, which Ruby can't overload: `views > 100 && featured` silently becomes `featured`. To use the repository's methods or instance variables, take an argument: `Posts { |post| post.views > minimum_views }`.
 
 A table in round brackets keeps the rows that have related rows in it:
 
@@ -306,7 +307,7 @@ Reviews(author: Users(username: 'alice'))[:rating]
 # SELECT reviews.rating FROM reviews WHERE (EXISTS (SELECT 1 FROM users WHERE ((users.id = reviews.author_id) AND (users.username = 'alice'))))
 ```
 
-On a nested table a filter only filters the nested rows: `Users[:username] + Posts(published: true)[:title]` returns every user, each with their published posts. To filter both, reuse the filtered table:
+On a nested table, a filter only filters the nested rows: `Users[:username] + Posts(published: true)[:title]` returns every user. To filter both, reuse the filtered table:
 
 ```ruby
 # Only users with published posts, and only those posts.
@@ -317,11 +318,11 @@ Users(published)[:username] + published[:title]
 # SELECT title, user_id FROM posts WHERE ((posts.published = TRUE) AND (user_id IN (...)))
 ```
 
-In [SQL joins](#joins), filters go in the `WHERE` clause. To split a long expression over several lines, see [Multi-line expressions](#multi-line-expressions).
+In [joins](#joins), filters go in the `WHERE` clause. For long expressions, see [Multi-line expressions](#multi-line-expressions).
 
 ## Sorting
 
-`^` sorts by the columns in `Col[]`, ascending like an arrow going up, and `-` reverses them. Arithmetic limits the rows:
+`^` sorts ascending by the columns in `Col[]`, like an arrow going up, and `-` reverses them:
 
 ```ruby
 Posts[:title] ^ Col[:views]
@@ -337,7 +338,7 @@ Posts[:title] ^ -Col[:views] + Col[:title]
 # SELECT posts.title FROM posts ORDER BY posts.views DESC, posts.title
 ```
 
-Rows without a value sort last in both directions, so `Posts ^ -Col[:views] * 10` is the 10 most viewed posts on every database. Postgres would otherwise put them first when sorting descending, and SQLite and MySQL first when ascending.
+Rows without a value sort last either way, on every database, so `Posts ^ -Col[:views] * 10` is the 10 most viewed.
 
 ## Limits
 
@@ -352,7 +353,7 @@ Posts[:title] ^ -Col[:views][20...40]
 # SELECT posts.title FROM posts LIMIT 20 OFFSET 40
 ```
 
-Rows and pages count from 0, as in Ruby. Ruby binds `-`, `+`, `*`, `/` and `[]` tighter than `^`, so a limit travels with its sort and needs no parentheses, except around pages before `[page]`.
+Rows and pages count from 0. A limit binds tighter than `^`, so it needs no parentheses, except around pages before `[page]`.
 
 On a nested table, a sort or limit applies to each parent's nested rows:
 
@@ -367,7 +368,7 @@ Users[:username] + (Posts[:title] ^ -Col[:views] * 3) ^ Col[:username]
 # => Users alphabetically, each with their 3 most viewed posts
 ```
 
-After `&`, a sort applies to the joined rows, using whichever table has the column. `<`, `>` and `<=>` bind looser than `^`, so put the join in parentheses: `(Users < Posts) ^ Col[:username]`. After a `+` chain, a sort applies to the first table.
+After `&`, a sort uses whichever joined table has the column. Wrap `<`, `>` and `<=>` joins in parentheses first: `(Users < Posts) ^ Col[:username]`. After `+`, a sort applies to the first table.
 
 ## Writes
 
@@ -384,7 +385,7 @@ Round brackets choose rows and square brackets choose columns, as in reads, and 
 
 ### What goes in and what comes out
 
-Round brackets choose the rows, square brackets choose what comes out, and the value on the right is what goes in. Read each row left to right for the whole expression:
+Round brackets choose rows, square brackets choose what comes out, and the value on the right goes in. Each row reads left to right:
 
 | Filter | Output | Input |
 |---|---|---|
@@ -397,7 +398,7 @@ Round brackets choose the rows, square brackets choose what comes out, and the v
 | `Posts(id: 1)` | | `[:title] = 'New'` |
 | `Posts(id: 1)` | the number deleted | `.delete` |
 
-Square brackets never filter what goes in, so choose the columns to write from params yourself, as with Rails' `permit` or Prisma's `data`. That keeps columns such as `id` coming out without letting params set them. Update is the exception that reads naturally: `Posts(id: 1)[:title] = 'New'` sets the title, and returns nothing for the brackets to choose.
+Square brackets never filter what goes in, so pick the columns from params yourself, like Rails' `permit`. That way `id` can come out without params setting it. Update is the exception: `Posts(id: 1)[:title] = 'New'` sets the title.
 
 ### Insert
 
@@ -427,7 +428,7 @@ An insert adds new rows, so round brackets raise: `Posts(slug: 'hello') << row` 
 
 ### Upsert
 
-`<=` adds a row, or makes the matching one equal to it. Round brackets name the columns to match on, and their values are written too:
+`<=` adds a row, or updates the matching one. Round brackets name the columns to match, and are written too:
 
 ```ruby
 Posts(slug: 'hello') <= { title: 'Hello' }
@@ -438,9 +439,9 @@ Posts(slug: 'hello') <= { title: 'Hello' }
 Posts <= { id: 7, title: 'Hello' } # Without round brackets, the primary key matches.
 ```
 
-The matched columns need a unique index. Round brackets take plain values only, because a range or a block can't name one row. On MySQL, `ON DUPLICATE KEY UPDATE` matches any unique key, so the matched columns must be one, and the row mustn't set every column of another. A key the row leaves out, such as an auto-increment `id`, can't match.
+The matched columns need a unique index, and round brackets take plain values only. On MySQL, which matches any unique key, the row mustn't set every column of another unique key.
 
-⚠️ **RuboCop's autocorrect can break an upsert.** `Lint/Void` removes `<= row` from an upsert that isn't a method's last line, and `Style/YodaCondition` reverses `Tags <= row` to `row >= Tags`. Turn both off with LowData's config:
+⚠️ **RuboCop's autocorrect can break an upsert:** `Lint/Void` deletes it and `Style/YodaCondition` reverses it. Turn both off with LowData's config:
 
 ```yaml
 # .rubocop.yml
@@ -448,7 +449,7 @@ inherit_gem:
   lowdata: config/rubocop.yml
 ```
 
-Under `ruby -w`, an upsert that isn't a method's last line or assigned also warns `possibly useless use of <= in void context`. To silence it, use the [warning](https://github.com/jeremyevans/ruby-warning) gem: `Warning.ignore(/useless use of <= in void context/)`.
+Under `ruby -w`, an upsert mid-method warns `possibly useless use of <= in void context`. Silence it with the [warning](https://github.com/jeremyevans/ruby-warning) gem: `Warning.ignore(/useless use of <= in void context/)`.
 
 ### Update
 
@@ -467,7 +468,7 @@ Ruby makes an assignment return its right-hand side, so an update returns the as
 
 ### Delete
 
-`delete` removes the rows chosen by the round brackets, and returns how many. It's a word rather than an operator because a delete can't be undone, so it should be easy to spot and to search for:
+`delete` removes the rows in round brackets and returns how many. It's a word, not an operator, so it's easy to spot:
 
 ```ruby
 Posts(id: 1).delete
@@ -516,7 +517,7 @@ Users[:username] +
   Comments[:body]
 ```
 
-Ruby ends a statement at a line break when the line is complete, even inside parentheses, so an operator at the start of the next line begins a new statement. A leading `+` raises `undefined method '+@'`, and a leading `&`, `<`, `^` or `*` is a syntax error.
+A line starting with an operator is a new statement in Ruby: a leading `+` raises `undefined method '+@'`, and `&`, `<`, `^` or `*` is a syntax error.
 
 **Long brackets.** Break inside the brackets, with the columns on one line and each nested table on its own:
 
@@ -539,7 +540,7 @@ Posts(published: true) {
 ]
 ```
 
-Split anywhere else and Ruby reads the next line as a new statement. A `{` at the start of a line is a hash, which is a syntax error. A `[` at the start of a line is a new array, which fails silently:
+Split anywhere else and Ruby starts a new statement. A line starting with `{` is a syntax error, and one starting with `[` is a new array, which fails silently:
 
 ```ruby
 Posts(published: true) { views > 100 }

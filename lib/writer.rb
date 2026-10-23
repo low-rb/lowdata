@@ -23,6 +23,7 @@ class LowData
     def insert(source:, rows:)
       check_rows!(rows:, operator: '<<')
       check_insert_filter!(filter: source.filter)
+      return insert_all(source:, rows:) if source.no_columns? && rows.is_a?(Array) && rows.map(&:keys).uniq.one?
 
       each_row(rows:) { |row| insert_row(source:, row:) }
     end
@@ -56,9 +57,17 @@ class LowData
       @database.transaction { rows.map(&) }
     end
 
+    # Empty brackets return nothing, so rows with the same columns go in one INSERT, as nothing needs matching back to
+    # them. Otherwise rows insert one by one, because RETURNING doesn't promise the inserted order, and a multi-row
+    # INSERT takes its columns from the first row, so a column missing from it would be dropped.
+    def insert_all(source:, rows:)
+      @database[source.table].multi_insert(rows)
+      rows.map { {} }
+    end
+
     def insert_row(source:, row:)
       dataset = @database[source.table]
-      return dataset.returning(*returned(source:)).insert(row).first if dataset.supports_returning?(:insert)
+      return dataset.returning(*returned(source:)).insert(row).first if returning?(dataset:, source:)
 
       id = dataset.insert(row)
       read_back(source:, keys: inserted_keys(table: source.table, row:, id:))
@@ -72,7 +81,7 @@ class LowData
       raise Error, "LowData can't upsert on #{@database.database_type}" unless dataset.respond_to?(:insert_conflict)
 
       dataset = dataset.insert_conflict(target:, update: updates(row:, target:))
-      return dataset.returning(*returned(source:)).insert(row).first if dataset.supports_returning?(:insert)
+      return dataset.returning(*returned(source:)).insert(row).first if returning?(dataset:, source:)
 
       dataset.insert(row)
       read_back(source:, keys: row.slice(*target))
@@ -119,9 +128,15 @@ class LowData
       source.columns + source.renames.map { |name, column| Sequel.as(column, name) }
     end
 
-    # Databases without RETURNING read the row back by its keys.
+    # Empty brackets return no columns, and databases without RETURNING read the row back by its keys.
     def read_back(source:, keys:)
+      return {} if source.no_columns?
+
       @database[source.table].where(keys).select(*returned(source:)).first
+    end
+
+    def returning?(dataset:, source:)
+      dataset.supports_returning?(:insert) && !source.no_columns?
     end
 
     def inserted_keys(table:, row:, id:)

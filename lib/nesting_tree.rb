@@ -13,6 +13,14 @@ class LowData
       assemble(entry: entry(node:))
     end
 
+    # The tree whose first table is returned, so empty brackets, which select none of its columns, raise.
+    def root(node:)
+      root = build(node:)
+      raise ArgumentError, QueryCompiler.no_columns_message(table: root.source.table) if !root.join && root.source.no_columns?
+
+      root
+    end
+
     # An expression's node, waiting for the children NestingPath nests in it.
     def entry(node:)
       raise JoinError, QueryCompiler::INVERSION_JOIN_MESSAGE if node.is_a?(DataExpression::Inversion)

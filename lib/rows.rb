@@ -2,9 +2,9 @@
 
 class LowData
   # Which sorted rows to keep. Rows count from 0, as in Ruby:
-  #   Posts[] * 10                 # LIMIT 10
-  #   (Posts[] / 20)[2]            # LIMIT 20 OFFSET 40, the third page of 20
-  #   Posts[] ^ Col[:id][20...40]  # LIMIT 20 OFFSET 20
+  #   Posts * 10                   # LIMIT 10
+  #   (Posts / 20)[2]              # LIMIT 20 OFFSET 40, the third page of 20
+  #   Posts ^ Col[:id][20...40]    # LIMIT 20 OFFSET 20
   # Pages have a `page_size` until a page is picked, and a `limit` and `offset` after.
   Rows = ::Data.define(:offset, :limit, :page_size) do
     def self.limit(count)

@@ -58,14 +58,14 @@ class LowData
     end
 
     def load(node:)
-      root = NestingTree.new(schema: @schema).build(node:)
+      root = NestingTree.new(schema: @schema).root(node:)
       shape(node: root, rows: dataset(node: root).all)
     end
 
     # The SQL of each query `load` runs, parents first, without running them. A nested table's query shows the parent
     # values it's filtered by as `IN (...)`.
     def sql(node:)
-      queries(node: NestingTree.new(schema: @schema).build(node:)).map(&:sql)
+      queries(node: NestingTree.new(schema: @schema).root(node:)).map(&:sql)
     end
 
     private
@@ -92,7 +92,7 @@ class LowData
     def join_dataset(node:)
       parents = node.children.map { |child| Sequel[child.link.parent_table][child.link.parent_column].as(child.link.parent_key) }
       links = node.link ? [link_column(node:).as(LINK)] : []
-      @queries.compile(node: node.join.node).select_append(*parents.uniq, *links)
+      @queries.compile(node: node.join.node, links: [*parents.uniq, *links])
     end
 
     def link_column(node:)

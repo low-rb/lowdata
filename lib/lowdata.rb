@@ -7,6 +7,7 @@ require 'sequel'
 require_relative 'version'
 require_relative 'errors'
 require_relative 'data_expression'
+require_relative 'data_expression/source'
 require_relative 'rows'
 require_relative 'col'
 require_relative 'order_compiler'
@@ -19,8 +20,9 @@ require_relative 'nesting_tree'
 require_relative 'nesting_path'
 require_relative 'query_compiler'
 require_relative 'writer'
-require_relative 'expression_writes'
+require_relative 'data_expression/writes'
 require_relative 'table_reference'
+require_relative 'table_reference/writes'
 
 class LowData
   class << self

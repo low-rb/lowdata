@@ -6,7 +6,7 @@ class LowData
     INVERSION_JOIN_MESSAGE = "Table[] can't be joined with other expressions"
     NESTING_JOIN_MESSAGE = 'Nested tables return nested data, so + and tables nested in brackets can\'t be combined with &, <, > ' \
                            'or <=>. Nest the join instead, e.g. Users[:username] + (Posts[:title] & Comments[:body])'
-    ORDERED_JOIN_MESSAGE = 'Sort and limit after joining, e.g. (Users[] < Posts[]) ^ Col[:username]. Ruby binds ^ tighter ' \
+    ORDERED_JOIN_MESSAGE = 'Sort and limit after joining, e.g. (Users < Posts) ^ Col[:username]. Ruby binds ^ tighter ' \
                            'than <, > and <=>, and * and / tighter than every join, so add parentheses around the join'
 
     def initialize(database:)
@@ -18,26 +18,37 @@ class LowData
       @orders = OrderCompiler.new(schema: @schema)
     end
 
-    def compile(node:)
-      return compile_ordered(node:) if node.is_a?(DataExpression::Ordered)
+    # `links` are columns a nested join selects to link its rows, as well as the columns asked for. See Nesting.
+    def compile(node:, links: [])
+      return compile_ordered(node:, links:) if node.is_a?(DataExpression::Ordered)
 
-      compile_unordered(node:, sources: [])
+      compile_unordered(node:, sources: [], links:)
+    end
+
+    # Empty brackets select no columns, so a query of only those has nothing to return.
+    def self.no_columns_message(table:)
+      name = LowData.constant_name(table)
+      "Empty brackets select no columns, so #{name}[] returns nothing. Write #{name} for every column, or name them, " \
+        "e.g. #{name}[:id]"
     end
 
     private
 
     # Sort keys and rows apply to the whole query, so each sort column can belong to any joined table.
-    def compile_ordered(node:)
+    def compile_ordered(node:, links:)
       sources = []
-      dataset = compile_unordered(node: node.node, sources:)
+      dataset = compile_unordered(node: node.node, sources:, links:)
       @orders.apply(dataset:, keys: node.keys, rows: node.rows, tables: sources.map(&:table))
     end
 
-    def compile_unordered(node:, sources:)
+    def compile_unordered(node:, sources:, links:)
       return compile_inversion(node:, sources:) if node.is_a?(DataExpression::Inversion)
 
       dataset = filter(dataset: build(node:, sources:), sources:)
-      dataset.select(*sources.flat_map { |source| selections(source:) })
+      selections = sources.flat_map { |source| selections(source:) } + links
+      raise ArgumentError, QueryCompiler.no_columns_message(table: sources.first.table) if selections.empty?
+
+      dataset.select(*selections)
     end
 
     def compile_inversion(node:, sources:)
@@ -83,6 +94,7 @@ class LowData
       sources.reduce(dataset) { |filtered, source| @filters.apply(dataset: filtered, source:) }
     end
 
+    # A bare table selects every column, and empty brackets select none.
     def selections(source:)
       return [Sequel[source.table].*] if source.every_column?
 
@@ -116,8 +128,8 @@ class LowData
     end
 
     def nested_join_message
-      'Ruby evaluated a join on the right first, e.g. `Users[] < Posts[] & Comments[]` runs `Posts[] & Comments[]` first ' \
-        'because & binds tighter than <. Add parentheses to join from the left: `(Users[] < Posts[]) & Comments[]`'
+      'Ruby evaluated a join on the right first, e.g. `Users < Posts & Comments` runs `Posts & Comments` first ' \
+        'because & binds tighter than <. Add parentheses to join from the left: `(Users < Posts) & Comments`'
     end
   end
 end

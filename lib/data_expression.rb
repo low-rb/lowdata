@@ -27,30 +27,12 @@ class LowData
     end
     # A table in another table's round brackets, keeping rows with `count` related rows: `Users(Posts => 3..)`.
     Related = ::Data.define(:key, :source, :count)
-    # A table with the columns to select, the columns renamed (`headline: :title`), the tables nested in its brackets and
-    # the filter on its rows.
-    Source = ::Data.define(:table, :columns, :renames, :nested, :filter) do
-      def initialize(table:, columns:, renames: {}, nested: [], filter: Filter.new)
-        super
-      end
-    end
-
-    class Source
-      # No columns or renames selects every column.
-      def every_column? = columns.empty? && renames.empty?
-
-      # The keys of each row, as asked for.
-      def names = columns + renames.keys
-
-      # The renamed columns, as `posts.title AS headline`.
-      def aliases = renames.map { |name, column| Sequel[table][column].as(name) }
-    end
     # A table nested in another table's brackets, under an optional key: `Reviews[:rating, author: Users[:username]]`.
     Nested = ::Data.define(:key, :node)
     Join = ::Data.define(:type, :left, :right) do
       def nest? = type == :nest
     end
-    # Tables nested side by side in the table before them: `Posts[:title] + [Comments[:body], Likes[]]`.
+    # Tables nested side by side in the table before them: `Posts[:title] + [Comments[:body], Likes]`.
     Siblings = ::Data.define(:nodes)
     Inversion = ::Data.define(:table, :columns, :renames, :filter)
     # A node sorted by `keys` (Col::Key) with `rows` (Rows) kept: `Posts[:title] ^ -Col[:views] * 10`.
@@ -67,6 +49,7 @@ class LowData
     SORT_MESSAGE = 'Sort by columns with Col[], e.g. Posts[:title] ^ Col[:views], not %<value>s'
     NESTED_DATASET_MESSAGE = 'Nested tables load with one query per table, so they have no single dataset. Call sql to see ' \
                              'each query, or to_a to load them'
+
     def dataset(database: LowData.database)
       raise Error, NESTED_DATASET_MESSAGE if nested?
 
@@ -109,9 +92,10 @@ class LowData
     end
 
     def add_siblings(expressions)
+      expressions = expressions.map { |expression| TableReference.expression(expression) }
       invalid = expressions.reject { |expression| expression.is_a?(DataExpression) }
       raise ArgumentError, "Nest data expressions such as Comments[:body], not #{invalid.map(&:inspect).join(', ')}" if invalid.any?
-      raise ArgumentError, 'Nest at least one table, e.g. Posts[:title] + [Comments[:body], Likes[]]' if expressions.empty?
+      raise ArgumentError, 'Nest at least one table, e.g. Posts[:title] + [Comments[:body], Likes]' if expressions.empty?
 
       @node = Join.new(type: :nest, left: @node, right: Siblings.new(nodes: expressions.map(&:node)))
     end
@@ -153,7 +137,9 @@ class LowData
         @node = Join.new(type:, left: @node, right: expression.node)
       end
 
+      # A bare table on the right, `Users[:username] + Posts`, joins as every column of the table.
       define_method(:"#{prefix}_value") do |value|
+        return send(:"#{prefix}_expression", value.to_expression) if value.is_a?(TableReference)
         return add_siblings(value) if prefix == :add && value.is_a?(Array)
 
         raise ArgumentError, "Join a data expression such as Posts[:title], not the value #{value.inspect}"

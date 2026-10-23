@@ -8,7 +8,7 @@ class PostsData < LowData
   def nest_chain_reordered = Users[:username] + Comments[:body] + Posts[:title]
   def nest_up = Comments[:body] + Posts[:title] + Users[:username]
   def nest_siblings = Posts[:title] + [Comments[:body], Likes[:id]]
-  def nest_all_columns = Posts[] + Users[:username]
+  def nest_all_columns = Posts + Users[:username]
   def nest_then_left = Users[:username] + Posts[:title] < Comments[:body]
   def nest_multiple_paths = Users[:username] + Posts[:title] + Likes[:id]
   def nest_unlinked = Users[:username] + Tags[:name]
@@ -65,7 +65,7 @@ class PostsData < LowData
   def inner = Users[:username] & Posts[:title]
   def left = Users[:username] < Posts[:title]
   def right = Users[:username] > Posts[:title]
-  def all_columns = Users[] & Posts[]
+  def all_columns = Users & Posts
   def chained = Users[:username] & Posts[:title] & Comments[:body]
   def parenthesized = (Users[:username] < Posts[:title]) & Comments[:body]
   def nested = Users[:username] < Posts[:title] & Comments[:body]

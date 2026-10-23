@@ -1,11 +1,18 @@
 # frozen_string_literal: true
 
 class LowData
-  # A table named by a constant, such as `Users`, waiting for its columns: `Users[:username]`.
+  # A table named by a constant, such as `Users`. Square brackets choose its columns, `Users[:username]`, and on its own
+  # it's every column. See ADR 0006.
   # An inverted reference is `Table`, standing in for the repository's table and any table related to it.
   # A reference can carry filters from round brackets, `Posts(published: true)`, and be negated with `~Posts`.
   class TableReference
     FILTER_KEYWORD_MESSAGE = 'Filters go in round brackets, e.g. Posts(published: true)[:title], not %<keywords>s'
+    BARE_TABLE_MESSAGE = 'Table joins the tables that own the columns it selects, so name them, e.g. Table[:title, :username]. ' \
+                         "For every column of the repository's table, name the table, e.g. Posts"
+    OPERATORS = %i[+ & < > <=> ^ * /].freeze
+
+    # A bare table on its own is every column, as a data expression: `Users[:username] + Posts`.
+    def self.expression(value) = value.is_a?(TableReference) ? value.to_expression : value
 
     attr_reader :table, :filter, :negated
 
@@ -17,14 +24,16 @@ class LowData
     end
 
     # Each argument's type decides its meaning:
-    #   Posts[:title]                              # A symbol is a column. No columns selects every column.
-    #   Users[:username, Posts[:title]]            # A data expression is a nested table.
+    #   Posts[:title]                              # A symbol is a column. Empty brackets select no columns.
+    #   Users[:username, Posts[:title]]            # A data expression is a nested table, and a bare table nests
+    #   Users[:username, Posts]                    # every column.
     #   Reviews[:rating, author: Users[:username]] # A keyword with a data expression names a nested table.
     #   Posts[:id, headline: :title]               # A keyword with a symbol renames a column.
     def [](*arguments, **keywords)
-      raise ArgumentError, "~#{LowData.constant_name(table)} filters by related rows, so it can't select columns" if negated
+      check_negated!
       return inverted(arguments:, keywords:) if @inverted
 
+      arguments = arguments.map { |argument| TableReference.expression(argument) }
       expressions, columns = arguments.partition { |argument| argument.is_a?(DataExpression) }
       check_columns!(columns:)
       named, renames = named(keywords:, columns:)
@@ -60,65 +69,37 @@ class LowData
       with(negated: !negated)
     end
 
-    # Writes run straight away. See Writer:
-    #   Posts << { title: 'Hello' }                 # Inserts, returning the new row's primary key.
-    #   Posts(slug: 'hello') <= { title: 'Hello' }  # Upserts, matching on the round brackets.
-    #   Posts(id: 1)[:title] = 'New'                # Updates the rows chosen by the round brackets.
-    #   Posts(id: 1).delete                         # Deletes them, returning how many.
-    def <<(rows)
-      writer.insert(source: write_source, rows:)
+    # A bare table reads and joins as every column of the table:
+    #   Posts                          # SELECT posts.* FROM posts
+    #   Users[:username] + Posts       # Each user with every column of their posts.
+    #   Posts ^ -Col[:views] * 10      # The 10 most viewed posts.
+    def to_expression
+      raise ArgumentError, BARE_TABLE_MESSAGE if @inverted
+
+      check_negated!
+      DataExpression.new(node: source)
     end
 
-    def <=(rows)
-      writer.upsert(source: write_source, rows:)
+    OPERATORS.each do |operator|
+      define_method(operator) { |other| to_expression.public_send(operator, other) }
     end
 
-    # Ruby makes an assignment return its right-hand side, so `Posts(id: 1)[:title] = 'New'` returns 'New'.
-    def []=(*columns, value)
-      writer.update(source: write_source, values: assignments(columns:, value:))
-    end
-
-    def delete
-      writer.delete(source: write_source)
+    %i[to_a sql dataset].each do |name|
+      define_method(name) { |**options| to_expression.public_send(name, **options) }
     end
 
     def source
-      DataExpression::Source.new(table:, columns: [], filter:)
+      DataExpression::Source.new(table:, columns: [], filter:, bare: true)
     end
 
     private
 
+    def check_negated!
+      raise ArgumentError, "~#{LowData.constant_name(table)} filters by related rows, so it can't select columns" if negated
+    end
+
     def with(filter: @filter, negated: @negated)
       self.class.new(table:, inverted: @inverted, filter:, negated:)
-    end
-
-    def writer
-      Writer.new(database: LowData.database)
-    end
-
-    def write_source
-      raise ArgumentError, "~#{LowData.constant_name(table)} filters by related rows, so it can't be written to" if negated
-
-      source
-    end
-
-    # The columns in square brackets and the value assigned to them:
-    #   Posts(id: 1)[:title] = 'New'                  # One column takes a value.
-    #   Posts(id: 1)[:title, :body] = ['New', '...']  # Several columns take an array of as many values.
-    #   Posts(id: 1)[] = { title: 'New' }             # Empty brackets take a hash of columns and values.
-    def assignments(columns:, value:)
-      check_columns!(columns:)
-      return assigned_hash(value:) if columns.empty?
-      return { columns.first => value } if columns.one?
-      return columns.zip(value).to_h if value.is_a?(Array) && value.length == columns.length
-
-      raise ArgumentError, "#{columns.length} columns take #{columns.length} values, e.g. Posts(id: 1)[:title, :body] = ['New', '...']"
-    end
-
-    def assigned_hash(value:)
-      return value if value.is_a?(Hash) && value.any?
-
-      raise ArgumentError, "Empty brackets take a hash of columns and values, e.g. Posts(id: 1)[] = { title: 'New' }"
     end
 
     def related(key:, reference:, count: nil)
@@ -132,6 +113,7 @@ class LowData
 
     # Returns the named nested tables and the renamed columns.
     def named(keywords:, columns:)
+      keywords = keywords.transform_values { |value| TableReference.expression(value) }
       named, others = keywords.partition { |_key, value| value.is_a?(DataExpression) }
       renames, filters = others.partition { |_key, value| value.is_a?(Symbol) }
       raise ArgumentError, format(FILTER_KEYWORD_MESSAGE, keywords: filters.to_h) if filters.any?
@@ -150,6 +132,8 @@ class LowData
     end
 
     def inverted(arguments:, keywords:)
+      raise ArgumentError, BARE_TABLE_MESSAGE if arguments.empty? && keywords.empty?
+
       check_columns!(columns: arguments)
       raise ArgumentError, 'Table[] takes column names only, and renames such as headline: :title' unless keywords.values.all?(Symbol)
 

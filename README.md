@@ -52,7 +52,7 @@ Users[:username] + Posts[:title] + Comments[:body]
 Every row of the first table appears exactly once, so rows never repeat or drop out. Each table nests in the table written before it, so the expression has the shape of the result. Tables nested side by side go in an array:
 
 ```ruby
-Posts[:title] + [Comments[:body], Likes[]]
+Posts[:title] + [Comments[:body], Likes]
 
 # SELECT title, id FROM posts
 # SELECT body, post_id FROM comments WHERE (post_id IN (...))
@@ -72,7 +72,7 @@ An array's elements can be chains, and an array ends a chain: `Users + [Posts + 
 Tables can also nest inside another table so that the input has the shape of the output:
 
 ```ruby
-Users[:username, Posts[:title, Likes[]]]
+Users[:username, Posts[:title, Likes]]
 
 # SELECT username, id FROM users
 # SELECT title, user_id, id FROM posts WHERE (user_id IN (...))
@@ -80,7 +80,7 @@ Users[:username, Posts[:title, Likes[]]]
 # => [{ username: 'alice', posts: [{ title: 'Hello', likes: [{ id: 1, ... }] }] }]
 ```
 
-`+` is another way to write this: `Users[:username] + Posts[:title] + Likes[]` returns the same data as the example above, and `Posts[:title] + Users[:username]` the same as `Posts[:title, Users[:username]]`.
+`+` is another way to write this: `Users[:username] + Posts[:title] + Likes` returns the same data as the example above, and `Posts[:title] + Users[:username]` the same as `Posts[:title, Users[:username]]`.
 
 A keyword names a nested table. On the "one" side the name also picks the foreign key, so the same table can nest twice:
 
@@ -122,7 +122,7 @@ Users[:username] + (Posts[:title] & Comments[:body] ^ Col[:body] * 2)
 ```
 
 - Ruby runs `*`, then `&`, then `^`, so the example above is `(Posts[:title] & Comments[:body]) ^ (Col[:body] * 2)`.
-- `<`, `>` and `<=>` run after `^`, so those joins need parentheses of their own: `(Posts[] < Comments[]) ^ Col[:body]`.
+- `<`, `>` and `<=>` run after `^`, so those joins need parentheses of their own: `(Posts < Comments) ^ Col[:body]`.
 - A sort after the closing parenthesis sorts the parents instead.
 
 Only the "many" side can nest a join, because joined rows can repeat the row they link to.
@@ -142,7 +142,7 @@ Posts[:title] + (PostTags[:created_at] & Tags[:name])
 # ]
 ```
 
-The tags nest under `post_tags`, the table that links them to posts. To name them `tags`, nest the join [in square brackets](#inline-nesting) instead: `Posts[:title, tags: PostTags[:created_at] & Tags[:name]]`.
+The tags nest under `post_tags`, the table that links them to posts. To name them `tags`, nest the join [in square brackets](#inline-nesting) instead: `Posts[:title, tags: PostTags[:created_at] & Tags[:name]]`. To leave out the join table's columns, give it empty brackets: `Posts[:title, tags: PostTags[] & Tags[:name]]` returns `tags: [{ name: 'ruby' }, { name: 'sql' }]`.
 
 ### Nesting under joins
 
@@ -206,7 +206,19 @@ Users[:username] <=> Posts[:title]
 
 The `ON` clause comes from the foreign keys in your database. Each table joins to the table written before it, using only the foreign keys between the two. To join to an earlier table, name its foreign key: `Posts[:title] & Users[:username] & Orders(:user_id)[:total]` joins orders to users.
 
-Ruby evaluates `&` before `<` and `>`, so add parentheses when mixing operators: `(Users[] < Posts[]) & Comments[]`. `+` returns nested data rather than rows, so its result can't be joined, but a join can be [nested with `+`](#nesting-joins).
+Ruby evaluates `&` before `<` and `>`, so add parentheses when mixing operators: `(Users < Posts) & Comments`. `+` returns nested data rather than rows, so its result can't be joined, but a join can be [nested with `+`](#nesting-joins).
+
+## Columns
+
+Square brackets choose a table's columns. A table on its own is every column, and empty brackets are none:
+
+| Expression | Columns | SQL |
+|---|---|---|
+| `Posts` | every column | `SELECT posts.* FROM posts` |
+| `Posts[:title]` | the ones listed | `SELECT posts.title FROM posts` |
+| `Posts[]` | none | – |
+
+A table on its own works anywhere a table with brackets does: `Users[:username] + Posts`, `Users[:username, Posts]`, `Posts ^ Col[:views]` or `def all = Posts(published: true)`. Empty brackets keep a table out of the result while it still links and filters rows, so `Users[] & Posts[:title]` returns only titles, and a nested table with empty brackets nests an empty hash for each related row. A query with no columns at all, such as `Posts[]` on its own or as the first table, raises.
 
 ## Renaming
 
@@ -351,7 +363,7 @@ Users[:username] + (Posts[:title] ^ -Col[:views] * 3) ^ Col[:username]
 # => Users alphabetically, each with their 3 most viewed posts
 ```
 
-After `&`, a sort applies to the joined rows, using whichever table has the column. `<`, `>` and `<=>` bind looser than `^`, so put the join in parentheses: `(Users[] < Posts[]) ^ Col[:username]`. After a `+` chain, a sort applies to the first table.
+After `&`, a sort applies to the joined rows, using whichever table has the column. `<`, `>` and `<=>` bind looser than `^`, so put the join in parentheses: `(Users < Posts) ^ Col[:username]`. After a `+` chain, a sort applies to the first table.
 
 ## Writes
 
@@ -380,6 +392,14 @@ Posts[:id, :created_at] << { title: 'Hello', user_id: 1 }
 
 Posts << [{ title: 'Hello' }, { title: 'World' }]
 # => [{ id: 7 }, { id: 8 }], in one transaction
+```
+
+Empty brackets return nothing, which inserts many rows in one statement rather than one by one:
+
+```ruby
+Posts[] << [{ title: 'Hello' }, { title: 'World' }]
+# INSERT INTO posts (title) VALUES ('Hello'), ('World')
+# => [{}, {}]
 ```
 
 An insert adds new rows, so round brackets raise: `Posts(slug: 'hello') << row` is an upsert.
@@ -443,7 +463,7 @@ Posts[:archived] = true # Raises: Choose the posts to update with round brackets
 Posts.delete            # Raises: Choose the posts to delete with round brackets, e.g. Posts(id: 1).delete
 ```
 
-To change every row on purpose, use the dataset: `Posts[].dataset.update(archived: true)`.
+To change every row on purpose, use the dataset: `Posts.dataset.update(archived: true)`.
 
 ## Syntax
 

@@ -1,6 +1,6 @@
 # ADR 0006: Bare tables select every column, and empty brackets select none
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-21
 
 ## Context
@@ -30,7 +30,7 @@ A bare table such as `Posts`, with no brackets, is a `TableReference`: a table w
 | `Users[:username] + Posts` | `ArgumentError: Join a data expression such as Posts[:title], not the value #<LowData::TableReference ...>` |
 | `Users[:username, Posts]` | `ArgumentError: Columns are symbols, e.g. Posts[:title], not #<LowData::TableReference ...>` |
 
-## Decision (proposed)
+## Decision
 
 A bare table selects every column, and empty brackets select none:
 
@@ -69,6 +69,7 @@ Round brackets keep their meaning. `Users(Posts)` still keeps users with related
 - **Nested:** each nested row is an empty hash, so `Users[:username, Posts[]]` gives `posts: [{}, {}]`. That's consistent, and it shows how many related rows there are. In a nested join, the other tables' columns fill each row.
 - **On its own, or as the first table:** `Posts[]` alone, or `Posts[] + Users[:username]`, would select nothing from the subject, which isn't valid SQL in a flat query and is meaningless as the subject of nesting. It raises, suggesting `Posts` for every column.
 - **Linking columns:** the columns nesting needs to link rows (such as `posts.id`) are still selected, and removed from the output as now.
+- **In a write:** the write still happens, and returns an empty hash per row: `Posts[] << row` returns `{}`, and `Tags(name: 'ruby')[] <= row` returns `{}`. With nothing to return, rows with the same columns insert in one multi-row `INSERT`. With `RETURNING`, rows insert one by one, because databases don't promise to return them in the order they were inserted (SQLite's documentation says the order is arbitrary). So `Posts[] << rows` is the fast way to insert many rows. Rows with different columns still insert one by one, because a multi-row `INSERT` takes its columns from the first row.
 
 ### `Table`
 

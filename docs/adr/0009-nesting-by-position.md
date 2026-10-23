@@ -248,5 +248,5 @@ This keeps every guarantee that chose option 5, and is the only option that does
 - **Robustness:** a new foreign key can only break an expression if it's a second key between two tables written next to each other, and then it raises. No new foreign key can silently change a result.
 - **Two ways to write siblings:** an array, or a named foreign key reaching back. The README leads with arrays.
 - **Code:** `NestingTree` builds the tree from the expression's structure instead of searching foreign keys between every pair, and `QueryCompiler` joins each table to the one before it. Both get simpler.
-- **README:** Flat nesting describes paths and arrays. The `Users + (Posts + Likes)` explanation, and the paragraph on order, are replaced.
+- **README:** Chained nesting describes paths and arrays. The `Users + (Posts + Likes)` explanation, and the paragraph on order, are replaced.
 - **ADR 0001** is marked as superseded in its rule for where tables nest.

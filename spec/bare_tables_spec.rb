@@ -1,8 +1,6 @@
 # frozen_string_literal: true
 
 require_relative '../lib/lowdata'
-require 'logger'
-
 require_relative 'helpers/database'
 
 class BareTablesData < LowData
@@ -39,7 +37,7 @@ RSpec.describe 'Bare tables select every column, and empty brackets select none'
 
   describe 'a bare table' do
     it 'selects every column' do
-      expect(repository.every.sql).to eq('SELECT `posts`.* FROM `posts`')
+      expect_sql(repository.every.sql).to eq('SELECT `posts`.* FROM `posts`')
       expect(repository.every.to_a.first).to eq(hello)
     end
 
@@ -69,15 +67,16 @@ RSpec.describe 'Bare tables select every column, and empty brackets select none'
     end
 
     it 'joins' do
-      expect(repository.left_sorted.sql).to eq(
-        'SELECT `users`.*, `posts`.* FROM `users` LEFT JOIN `posts` ON (`posts`.`user_id` = `users`.`id`) ORDER BY `users`.`username`'
+      expect_sql(repository.left_sorted.sql).to eq(
+        'SELECT `users`.*, `posts`.* FROM `users` LEFT JOIN `posts` ON (`posts`.`user_id` = `users`.`id`) ' \
+          'ORDER BY `users`.`username` ASC NULLS LAST'
       )
     end
   end
 
   describe 'empty brackets' do
     it 'select no columns in a join, which still links and filters rows' do
-      expect(repository.joined_without_columns.sql)
+      expect_sql(repository.joined_without_columns.sql)
         .to eq('SELECT `posts`.`title` FROM `users` INNER JOIN `posts` ON (`posts`.`user_id` = `users`.`id`)')
       expect(repository.joined_without_columns.to_a).to eq([{ title: 'Hello' }, { title: 'World' }])
     end
@@ -114,13 +113,14 @@ RSpec.describe 'Bare tables select every column, and empty brackets select none'
     end
 
     it 'insert rows with the same columns in one INSERT' do
-      inserts = []
-      logger = Logger.new(nil)
-      logger.define_singleton_method(:info) { |sql| inserts << sql if sql.include?('INSERT') }
+      log = StringIO.new
+      logger = Logger.new(log)
       database.loggers << logger
 
       expect(repository.insert_none([{ title: 'One' }, { title: 'Two' }])).to eq([{}, {}])
-      expect(inserts.length).to eq(1)
+      expect(log.string.scan('INSERT INTO').length).to eq(1)
+    ensure
+      database.loggers.delete(logger)
       expect(database[:posts].where(id: [4, 5]).select_map(:title)).to eq(%w[One Two])
     end
 

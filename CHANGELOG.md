@@ -9,11 +9,15 @@ Minor features that don't break backwards compatibility are released as patches.
 
 ### Changed
 
-- A bare table, `Posts`, selects every column, and empty brackets, `Posts[]`, select none. Replace `Posts[]` with `Posts`
+- A bare table like `Posts` selects every column, and empty brackets like `Posts[]` select none
+- Rows without a value sort last in both directions, on every database
 
 ### Fixed
 
 - Assigning a hash to one column, `Posts(id: 1)[:title] = { ... }`, raises instead of storing `0`
+- MySQL: upserts match on any unique key the row can't clash with, rather than only a table's sole unique key
+- MySQL: a write returning a missing column raises before writing, and `<=>` raises a clear error, as MySQL has no `FULL JOIN`
+- Postgres: a misspelt table, `Psots(...)`, raises `NoMethodError` rather than `NameError`
 
 ## 0.2.0
 

@@ -74,8 +74,12 @@ class LowData
   # Round brackets after a table filter it: `Posts(published: true) { views > 100 }[:title]`. A capitalised name is a
   # table only when the database has that table, so typos still raise NoMethodError. `Table(...)` is always a table.
   def method_missing(name, *arguments, **keywords, &block)
-    raise ConfigError, ConfigError::MISSING_DATABASE if LowData.database.nil? && name.match?(/\A[A-Z]/)
-    return super unless table_method?(name:)
+    return super unless name.match?(/\A[A-Z]/)
+    raise ConfigError, ConfigError::MISSING_DATABASE if LowData.database.nil?
+
+    # Raised rather than left to super, which can report a NameError instead when looking up the tables runs a
+    # method_missing of its own, as Postgres' adapter does.
+    raise NoMethodError.new("undefined method '#{name}' for an instance of #{self.class}", name) unless table_method?(name:)
 
     self.class.const_missing(name).where(*arguments, **keywords, &block)
   end

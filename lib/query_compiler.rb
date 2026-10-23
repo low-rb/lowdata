@@ -6,6 +6,7 @@ class LowData
     INVERSION_JOIN_MESSAGE = "Table[] can't be joined with other expressions"
     NESTING_JOIN_MESSAGE = 'Nested tables return nested data, so + and tables nested in brackets can\'t be combined with &, <, > ' \
                            'or <=>. Nest the join instead, e.g. Users[:username] + (Posts[:title] & Comments[:body])'
+    FULL_JOIN_MESSAGE = 'MySQL has no FULL JOIN, so <=> only runs on other databases. Use < or > for a left or right join'
     ORDERED_JOIN_MESSAGE = 'Sort and limit after joining, e.g. (Users < Posts) ^ Col[:username]. Ruby binds ^ tighter ' \
                            'than <, > and <=>, and * and / tighter than every join, so add parentheses around the join'
 
@@ -68,14 +69,18 @@ class LowData
     end
 
     def join_dataset(dataset:, type:, right:, sources:)
+      check_join!(type:, right:, sources:)
+      conditions = join_conditions(left: sources, right:)
+      sources << right
+      dataset.join_table(type, right.table, conditions)
+    end
+
+    def check_join!(type:, right:, sources:)
       raise JoinError, INVERSION_JOIN_MESSAGE if right.is_a?(DataExpression::Inversion)
       raise JoinError, ORDERED_JOIN_MESSAGE if right.is_a?(DataExpression::Ordered)
       raise JoinError, NESTING_JOIN_MESSAGE if right.nested.any?
       raise JoinError, "Can't join #{right.table} to itself" if sources.any? { |source| source.table == right.table }
-
-      conditions = join_conditions(left: sources, right:)
-      sources << right
-      dataset.join_table(type, right.table, conditions)
+      raise JoinError, FULL_JOIN_MESSAGE if type == :full && @database.database_type == :mysql
     end
 
     def nesting?(node:)

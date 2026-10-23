@@ -50,6 +50,19 @@ class LowData
       raise ArgumentError, "Choose the #{source.table} to #{action} with round brackets, e.g. #{example}"
     end
 
+    # MySQL's ON DUPLICATE KEY UPDATE matches any unique key, so the upsert must match on one, and the row mustn't set
+    # every column of another, which could match a different row. An auto-increment id left out of the row can't match.
+    def check_mysql_keys!(table:, keys:, row:, target:)
+      matched, others = keys.partition { |key| key.sort == target.sort }
+      raise Error, "MySQL upserts match on a unique key, and #{target.join(', ')} isn't one of #{table}'s" if matched.empty?
+
+      clashing = others.find { |key| key.none? { |column| row[column].nil? } }
+      return unless clashing
+
+      raise Error, "MySQL matches an upsert on any unique key, and the row also sets #{clashing.join(', ')}, which could match " \
+                   "another #{table} row. Leave #{clashing.join(', ')} out of the row, or match on it"
+    end
+
     # Checked before the write, so a typo doesn't write a row and then fail to return it.
     def check_returned!(source:, columns:)
       missing = (source.columns + source.renames.values) - columns

@@ -28,7 +28,8 @@ class LowData
         foreign_keys(table: other).any? { |foreign_key| foreign_key[:table] == table }
       end
 
-      (outgoing + incoming).uniq - [table]
+      # Sorted, because databases list their tables in different orders, and error messages name the first.
+      ((outgoing + incoming).uniq - [table]).sort
     end
 
     # Foreign keys on the `from` table that reference the `to` table, as join conditions. `named` keeps only the foreign

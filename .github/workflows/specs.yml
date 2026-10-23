@@ -1,0 +1,62 @@
+name: Specs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  specs:
+    name: ${{ matrix.database }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - database: sqlite
+            url: ''
+          - database: postgres
+            url: postgres://lowdata:lowdata@localhost:5432/lowdata_test
+          - database: mysql
+            url: trilogy://lowdata:lowdata@127.0.0.1:3306/lowdata_test
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: lowdata
+          POSTGRES_PASSWORD: lowdata
+          POSTGRES_DB: lowdata_test
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_USER: lowdata
+          MYSQL_PASSWORD: lowdata
+          MYSQL_DATABASE: lowdata_test
+          MYSQL_ROOT_PASSWORD: lowdata
+        ports: ['3306:3306']
+        options: --health-cmd "mysqladmin ping -h 127.0.0.1" --health-interval 5s --health-timeout 5s --health-retries 20
+
+    env:
+      BUNDLE_WITH: databases
+      DATABASE_URL: ${{ matrix.url }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '4.0'
+          bundler-cache: true
+      - run: bundle exec rspec
+
+  rubocop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '4.0'
+          bundler-cache: true
+      - run: bundle exec rubocop

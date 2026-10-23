@@ -73,7 +73,7 @@ Posts <= { id: 7, title: 'Hello' }
 - **Matching:** the round brackets' keys are the conflict target. Without round brackets, the primary key is, and the row must include it. Postgres and SQLite need a unique index on the target columns, and raise without one.
 - **Filters:** only plain values, as in `Posts(slug: 'hello')`. A range, a block or a related table can't name a single row to match, so it raises.
 - **Returns** the row, as insert does, with square brackets after the round ones choosing its columns: `Posts(slug: 'hello')[:id, :created_at] <= row`.
-- **On MySQL**, `ON DUPLICATE KEY UPDATE` matches on any unique key rather than the named columns. LowData raises unless the named columns are the table's only unique key, so the match is the one written.
+- **On MySQL**, `ON DUPLICATE KEY UPDATE` matches on any unique key rather than the named columns. LowData raises unless the named columns are a unique key and the row doesn't set every column of another one, so the match is the one written. A key the row leaves out, such as an auto-increment `id`, can't match.
 
 ### Update: `[]=`
 

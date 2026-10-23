@@ -18,10 +18,12 @@ class LowData
       dataset.limit(rows.limit, rows.offset.zero? ? nil : rows.offset)
     end
 
+    # Rows without a value sort last in both directions, so `-Col[:views] * 10` is the 10 most viewed on every database.
+    # Postgres puts NULLs last ascending and first descending, and SQLite and MySQL the reverse.
     def order(keys:, tables:)
       keys.map do |key|
         column = Sequel[owner(column: key.column, tables:)][key.column]
-        key.descending ? column.desc : column
+        key.descending ? column.desc(nulls: :last) : column.asc(nulls: :last)
       end
     end
 

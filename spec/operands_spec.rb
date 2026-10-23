@@ -22,8 +22,8 @@ RSpec.describe 'Operators on data expressions' do
     nested = users + posts
     joined = users & posts
 
-    expect(users.sql).to eq('SELECT `users`.`username` FROM `users`')
-    expect(posts.sql).to eq('SELECT `posts`.`title` FROM `posts`')
+    expect_sql(users.sql).to eq('SELECT `users`.`username` FROM `users`')
+    expect_sql(posts.sql).to eq('SELECT `posts`.`title` FROM `posts`')
     expect(nested.to_a).to include({ username: 'alice', posts: [{ title: 'Hello' }] })
     expect(joined.to_a).to include({ username: 'alice', title: 'Hello' })
   end
@@ -33,10 +33,10 @@ RSpec.describe 'Operators on data expressions' do
     limited = posts * 1
     paged = posts / 2
 
-    expect(posts.sql).to eq('SELECT `posts`.`title` FROM `posts`')
-    expect(sorted.sql).to end_with('ORDER BY `posts`.`views` DESC')
-    expect(limited.sql).to end_with('LIMIT 1')
-    expect(paged[0].sql).to end_with('LIMIT 2')
+    expect_sql(posts.sql).to eq('SELECT `posts`.`title` FROM `posts`')
+    expect_sql(sorted.sql).to end_with('ORDER BY `posts`.`views` DESC NULLS LAST')
+    expect_sql(limited.sql).to end_with('LIMIT 1')
+    expect_sql(paged[0].sql).to end_with('LIMIT 2')
   end
 
   it 'returns a new expression for each operator in a chain' do

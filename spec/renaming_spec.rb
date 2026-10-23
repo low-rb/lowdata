@@ -10,7 +10,7 @@ RSpec.describe 'Renaming columns with name: :column' do
   include_context 'with a database'
 
   it 'returns a column under a new name' do
-    expect(repository.renamed.sql).to eq('SELECT `posts`.`id`, `posts`.`title` AS \'headline\' FROM `posts`')
+    expect_sql(repository.renamed.sql).to eq('SELECT `posts`.`id`, `posts`.`title` AS \'headline\' FROM `posts`')
     expect(repository.renamed.to_a).to include({ id: 1, headline: 'Hello' })
   end
 
@@ -46,7 +46,7 @@ RSpec.describe 'Renaming columns with name: :column' do
   end
 
   it 'renames columns in Table[]' do
-    expect(repository.inverted.sql).to eq(
+    expect_sql(repository.inverted.sql).to eq(
       'SELECT `posts`.`title`, `users`.`username` AS \'author\' FROM `posts` LEFT JOIN `users` ON (`posts`.`user_id` = `users`.`id`)'
     )
     expect(repository.inverted.to_a).to include({ title: 'Hello', author: 'alice' })

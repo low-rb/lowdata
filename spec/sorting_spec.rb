@@ -10,16 +10,16 @@ RSpec.describe 'Sorting with ^ Col[] and limiting with arithmetic' do
   include_context 'with a database'
 
   it 'sorts ascending by a column' do
-    expect(repository.sorted.sql).to eq('SELECT `posts`.`title` FROM `posts` ORDER BY `posts`.`views`')
-    expect(repository.sorted.to_a).to eq([{ title: 'Orphan' }, { title: 'Hello' }, { title: 'World' }])
+    expect_sql(repository.sorted.sql).to eq('SELECT `posts`.`title` FROM `posts` ORDER BY `posts`.`views` ASC NULLS LAST')
+    expect(repository.sorted.to_a).to eq([{ title: 'Hello' }, { title: 'World' }, { title: 'Orphan' }])
   end
 
   it 'sorts by several columns in the order written' do
-    expect(repository.sorted_many.sql).to end_with('ORDER BY `posts`.`user_id`, `posts`.`title`')
+    expect_sql(repository.sorted_many.sql).to end_with('ORDER BY `posts`.`user_id` ASC NULLS LAST, `posts`.`title` ASC NULLS LAST')
   end
 
   it 'sorts every column descending with -' do
-    expect(repository.sorted_desc.sql).to end_with('ORDER BY `posts`.`views` DESC, `posts`.`title` DESC')
+    expect_sql(repository.sorted_desc.sql).to end_with('ORDER BY `posts`.`views` DESC NULLS LAST, `posts`.`title` DESC NULLS LAST')
     expect(repository.sorted_desc.to_a).to eq([{ title: 'World' }, { title: 'Hello' }, { title: 'Orphan' }])
   end
 
@@ -28,27 +28,27 @@ RSpec.describe 'Sorting with ^ Col[] and limiting with arithmetic' do
   end
 
   it 'adds sort columns when sorting twice' do
-    expect(repository.sorted_twice.sql).to end_with('ORDER BY `posts`.`user_id`, `posts`.`title` DESC')
+    expect_sql(repository.sorted_twice.sql).to end_with('ORDER BY `posts`.`user_id` ASC NULLS LAST, `posts`.`title` DESC NULLS LAST')
   end
 
   it 'limits with *' do
-    expect(repository.limited.sql).to eq('SELECT `posts`.`title` FROM `posts` LIMIT 2')
+    expect_sql(repository.limited.sql).to eq('SELECT `posts`.`title` FROM `posts` LIMIT 2')
     expect(repository.sorted_limited.to_a).to eq([{ title: 'World' }])
     expect(repository.sorted_then_limited.to_a).to eq([{ title: 'Hello' }, { title: 'World' }])
   end
 
   it 'picks rows with a range, counting from 0' do
-    expect(repository.ranged.sql).to end_with('ORDER BY `posts`.`id` LIMIT 2 OFFSET 1')
+    expect_sql(repository.ranged.sql).to end_with('ORDER BY `posts`.`id` ASC NULLS LAST LIMIT 2 OFFSET 1')
     expect(repository.ranged.to_a).to eq([{ title: 'World' }, { title: 'Orphan' }])
     expect(repository.ranged_endless.to_a).to eq([{ title: 'World' }, { title: 'Orphan' }])
   end
 
   it 'splits into pages with / and picks one with [], counting from 0' do
     expect(repository.paged(0).to_a).to eq([{ title: 'Hello' }, { title: 'World' }])
-    expect(repository.paged(1).sql).to end_with('LIMIT 2 OFFSET 2')
+    expect_sql(repository.paged(1).sql).to end_with('LIMIT 2 OFFSET 2')
     expect(repository.paged(1).to_a).to eq([{ title: 'Orphan' }])
     expect(repository.paged(2).to_a).to eq([])
-    expect(repository.paged_unsorted.sql).to eq('SELECT `posts`.`title` FROM `posts` LIMIT 2')
+    expect_sql(repository.paged_unsorted.sql).to eq('SELECT `posts`.`title` FROM `posts` LIMIT 2')
   end
 
   it 'picks more than one page from the same pages' do
@@ -65,7 +65,7 @@ RSpec.describe 'Sorting with ^ Col[] and limiting with arithmetic' do
   end
 
   it 'sorts the joined rows by the table that has the column' do
-    expect(repository.sorted_join.sql).to end_with('ORDER BY `posts`.`views` DESC')
+    expect_sql(repository.sorted_join.sql).to end_with('ORDER BY `posts`.`views` DESC NULLS LAST')
     expect(repository.sorted_join.to_a).to eq([{ username: 'bob', title: 'World' }, { username: 'alice', title: 'Hello' }])
   end
 

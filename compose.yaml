@@ -1,0 +1,21 @@
+# Databases for running the specs locally:
+#   docker compose up -d
+#   bundle config set --local with databases && bundle install
+#   DATABASE_URL=postgres://lowdata:lowdata@localhost:5432/lowdata_test bundle exec rspec
+#   DATABASE_URL=trilogy://lowdata:lowdata@127.0.0.1:3307/lowdata_test bundle exec rspec
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: lowdata
+      POSTGRES_PASSWORD: lowdata
+      POSTGRES_DB: lowdata_test
+    ports: ['5432:5432']
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_USER: lowdata
+      MYSQL_PASSWORD: lowdata
+      MYSQL_DATABASE: lowdata_test
+      MYSQL_ROOT_PASSWORD: lowdata
+    ports: ['3307:3306'] # 3307, so it doesn't clash with a MySQL already on 3306

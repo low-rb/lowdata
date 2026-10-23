@@ -63,7 +63,7 @@ RSpec.describe 'Nesting and joining by position' do
 
   describe 'joins' do
     it 'joins each table to the table before it, ignoring foreign keys to tables further back' do
-      expect(repository.join_adjacent.sql).to include('INNER JOIN `likes` ON (`likes`.`post_id` = `posts`.`id`)')
+      expect_sql(repository.join_adjacent.sql).to include('INNER JOIN `likes` ON (`likes`.`post_id` = `posts`.`id`)')
     end
 
     it 'suggests a named foreign key when a table links to an earlier one' do
@@ -75,7 +75,7 @@ RSpec.describe 'Nesting and joining by position' do
     end
 
     it 'reaches back to an earlier table by a named foreign key' do
-      expect(repository.join_reach_back.sql).to include('INNER JOIN `reviews` ON (`reviews`.`author_id` = `users`.`id`)')
+      expect_sql(repository.join_reach_back.sql).to include('INNER JOIN `reviews` ON (`reviews`.`author_id` = `users`.`id`)')
       expect(repository.join_reach_back.to_a).to contain_exactly({ username: 'alice', title: 'Hello', rating: 5 })
     end
   end

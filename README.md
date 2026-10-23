@@ -204,6 +204,8 @@ Users[:username] <=> Posts[:title]
 # SELECT users.username, posts.title FROM users FULL JOIN posts ON (posts.user_id = users.id)
 ```
 
+MySQL has no `FULL JOIN`, so `<=>` raises there. Use `<` or `>` for a left or right join.
+
 The `ON` clause comes from the foreign keys in your database. Each table joins to the table written before it, using only the foreign keys between the two. To join to an earlier table, name its foreign key: `Posts[:title] & Users[:username] & Orders(:user_id)[:total]` joins orders to users.
 
 Ruby evaluates `&` before `<` and `>`, so add parentheses when mixing operators: `(Users < Posts) & Comments`. `+` returns nested data rather than rows, so its result can't be joined, but a join can be [nested with `+`](#nesting-joins).
@@ -334,6 +336,8 @@ Posts[:title] ^ -Col[:views]
 Posts[:title] ^ -Col[:views] + Col[:title]
 # SELECT posts.title FROM posts ORDER BY posts.views DESC, posts.title
 ```
+
+Rows without a value sort last in both directions, so `Posts ^ -Col[:views] * 10` is the 10 most viewed posts on every database. Postgres would otherwise put them first when sorting descending, and SQLite and MySQL first when ascending.
 
 ## Limits
 

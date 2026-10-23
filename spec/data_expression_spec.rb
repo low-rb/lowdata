@@ -61,18 +61,11 @@ RSpec.describe LowData::DataExpression do
     end
 
     it 'runs one query per table' do
-      queries = []
-      logger = Object.new
-      logger.define_singleton_method(:info) { |message| queries << message if message.include?('SELECT') }
-      database.loggers << logger
-
-      repository.nest_chain.to_a
-
-      expect(queries.length).to eq(3)
+      expect(queries { repository.nest_chain.to_a }.length).to eq(3)
     end
 
     it 'returns the SQL of each query, parents first' do
-      expect(repository.nest_chain.sql).to eq(
+      expect_sql(repository.nest_chain.sql).to eq(
         "SELECT `username`, `id` FROM `users`;\n" \
         "SELECT `title`, `user_id`, `id` FROM `posts` WHERE (`user_id` IN (...));\n" \
         'SELECT `body`, `post_id` FROM `comments` WHERE (`post_id` IN (...))'
@@ -80,10 +73,10 @@ RSpec.describe LowData::DataExpression do
     end
 
     it 'returns the SQL of a nested join and the tables under a join' do
-      expect(NestedJoinsData.new.nest_join_limited.sql.split(";\n").last).to include(
+      expect_sql(NestedJoinsData.new.nest_join_limited.sql.split(";\n").last).to include(
         'PARTITION BY `posts`.`user_id`', '(`posts`.`user_id` IN (...))'
       )
-      expect(NestedJoinsData.new.nest_after_join.sql.split(";\n").first).to include('`posts`.`id` AS \'lowdata_posts_id\'')
+      expect_sql(NestedJoinsData.new.nest_after_join.sql.split(";\n").first).to include('`posts`.`id` AS \'lowdata_posts_id\'')
     end
 
     it 'raises for a dataset because it runs more than one query' do
@@ -189,7 +182,7 @@ RSpec.describe LowData::DataExpression do
 
   describe 'filters' do
     it 'filters by a range' do
-      expect(repository.filter_range.sql).to eq('SELECT `posts`.`title` FROM `posts` WHERE (`posts`.`views` >= 100)')
+      expect_sql(repository.filter_range.sql).to eq('SELECT `posts`.`title` FROM `posts` WHERE (`posts`.`views` >= 100)')
       expect(repository.filter_upper.to_a).to eq([{ title: 'Hello' }])
     end
 
@@ -202,7 +195,7 @@ RSpec.describe LowData::DataExpression do
     end
 
     it 'puts filters on joined tables in the WHERE clause' do
-      expect(repository.filter_joined.sql).to eq(
+      expect_sql(repository.filter_joined.sql).to eq(
         'SELECT `users`.`username`, `posts`.`title` FROM `users` INNER JOIN `posts` ON (`posts`.`user_id` = `users`.`id`) ' \
         'WHERE (`posts`.`views` >= 100)'
       )
@@ -221,7 +214,7 @@ RSpec.describe LowData::DataExpression do
     end
 
     it 'filters nothing with empty round brackets' do
-      expect(repository.filter_empty.sql).to eq('SELECT `posts`.`title` FROM `posts`')
+      expect_sql(repository.filter_empty.sql).to eq('SELECT `posts`.`title` FROM `posts`')
     end
 
     it 'filters Table()' do
@@ -250,7 +243,7 @@ RSpec.describe LowData::DataExpression do
 
   describe 'blocks' do
     it 'filters by a condition' do
-      expect(repository.block.sql).to eq('SELECT `posts`.`title` FROM `posts` WHERE (`posts`.`views` > 100)')
+      expect_sql(repository.block.sql).to eq('SELECT `posts`.`title` FROM `posts` WHERE (`posts`.`views` > 100)')
     end
 
     it 'combines conditions with |' do
@@ -271,7 +264,7 @@ RSpec.describe LowData::DataExpression do
     end
 
     it 'qualifies columns with the table in joins' do
-      expect(repository.block_joined.sql).to eq(
+      expect_sql(repository.block_joined.sql).to eq(
         'SELECT `users`.`username`, `posts`.`title` FROM `users` INNER JOIN `posts` ON (`posts`.`user_id` = `users`.`id`) ' \
         'WHERE (`posts`.`views` > 100)'
       )
@@ -280,7 +273,7 @@ RSpec.describe LowData::DataExpression do
 
   describe 'related tables' do
     it 'keeps rows with related rows' do
-      expect(repository.related.sql).to eq(
+      expect_sql(repository.related.sql).to eq(
         'SELECT `users`.`username` FROM `users` WHERE (EXISTS (SELECT 1 FROM `posts` WHERE (`posts`.`user_id` = `users`.`id`)))'
       )
       expect(repository.related.to_a).to contain_exactly({ username: 'alice' }, { username: 'bob' })
@@ -296,13 +289,13 @@ RSpec.describe LowData::DataExpression do
     end
 
     it 'keeps rows by how many related rows they have' do
-      expect(repository.related_count.sql).to include('((SELECT count(*) FROM `likes` WHERE (`likes`.`post_id` = `posts`.`id`)) >= 2)')
+      expect_sql(repository.related_count.sql).to include('((SELECT count(*) FROM `likes` WHERE (`likes`.`post_id` = `posts`.`id`)) >= 2)')
       expect(repository.related_count.to_a).to eq([{ title: 'Hello' }])
       expect(repository.related_count_exact.to_a).to contain_exactly({ username: 'bob' }, { username: 'carol' })
     end
 
     it 'uses NOT EXISTS for a count of zero' do
-      expect(repository.related_count_zero.sql).to include('NOT (EXISTS')
+      expect_sql(repository.related_count_zero.sql).to include('NOT (EXISTS')
       expect(repository.related_count_zero.to_a).to eq([{ username: 'carol' }])
     end
 
@@ -351,13 +344,24 @@ RSpec.describe LowData::DataExpression do
   end
 
   describe '<=>' do
+    context 'on MySQL, which has no FULL JOIN' do
+      before { skip 'MySQL only' unless database.database_type == :mysql }
+
+      it 'raises' do
+        expect { repository.full.to_a }.to raise_error(LowData::JoinError, /MySQL has no FULL JOIN/)
+      end
+    end
+
     it 'builds a full outer join' do
-      expect(repository.full.sql).to eq(
+      skip 'MySQL has no FULL JOIN' if database.database_type == :mysql
+
+      expect_sql(repository.full.sql).to eq(
         'SELECT `users`.`username`, `posts`.`title` FROM `users` FULL JOIN `posts` ON (`posts`.`user_id` = `users`.`id`)'
       )
     end
 
     it 'keeps rows from both tables' do
+      skip 'MySQL has no FULL JOIN' if database.database_type == :mysql
       expect(repository.full.to_a).to contain_exactly(
         { username: 'alice', title: 'Hello' },
         { username: 'bob', title: 'World' },
@@ -369,7 +373,7 @@ RSpec.describe LowData::DataExpression do
 
   describe '&' do
     it 'builds an inner join' do
-      expect(repository.inner.sql).to eq(
+      expect_sql(repository.inner.sql).to eq(
         'SELECT `users`.`username`, `posts`.`title` FROM `users` INNER JOIN `posts` ON (`posts`.`user_id` = `users`.`id`)'
       )
     end
@@ -384,7 +388,7 @@ RSpec.describe LowData::DataExpression do
 
   describe '<' do
     it 'builds a left join' do
-      expect(repository.left.sql).to eq(
+      expect_sql(repository.left.sql).to eq(
         'SELECT `users`.`username`, `posts`.`title` FROM `users` LEFT JOIN `posts` ON (`posts`.`user_id` = `users`.`id`)'
       )
     end
@@ -400,7 +404,7 @@ RSpec.describe LowData::DataExpression do
 
   describe '>' do
     it 'builds a right join' do
-      expect(repository.right.sql).to eq(
+      expect_sql(repository.right.sql).to eq(
         'SELECT `users`.`username`, `posts`.`title` FROM `users` RIGHT JOIN `posts` ON (`posts`.`user_id` = `users`.`id`)'
       )
     end
@@ -416,13 +420,13 @@ RSpec.describe LowData::DataExpression do
 
   describe 'columns' do
     it 'selects every column when none are given' do
-      expect(repository.all_columns.sql).to start_with('SELECT `users`.*, `posts`.* FROM')
+      expect_sql(repository.all_columns.sql).to start_with('SELECT `users`.*, `posts`.* FROM')
     end
   end
 
   describe 'chaining' do
     it 'joins each table to any table already joined' do
-      expect(repository.chained.sql).to eq(
+      expect_sql(repository.chained.sql).to eq(
         'SELECT `users`.`username`, `posts`.`title`, `comments`.`body` FROM `users` ' \
         'INNER JOIN `posts` ON (`posts`.`user_id` = `users`.`id`) ' \
         'INNER JOIN `comments` ON (`comments`.`post_id` = `posts`.`id`)'
@@ -440,7 +444,7 @@ RSpec.describe LowData::DataExpression do
 
   describe 'Table[]' do
     it 'joins the repository table to the tables that own each column' do
-      expect(repository.inverted.sql).to eq(
+      expect_sql(repository.inverted.sql).to eq(
         'SELECT `users`.`username`, `posts`.`title`, `comments`.`body` FROM `posts` ' \
         'LEFT JOIN `users` ON (`posts`.`user_id` = `users`.`id`) ' \
         'LEFT JOIN `comments` ON (`comments`.`post_id` = `posts`.`id`)'
@@ -456,11 +460,11 @@ RSpec.describe LowData::DataExpression do
     end
 
     it 'selects columns in the order given' do
-      expect(repository.inverted_order.sql).to start_with('SELECT `posts`.`title`, `users`.`username` FROM `posts`')
+      expect_sql(repository.inverted_order.sql).to start_with('SELECT `posts`.`title`, `users`.`username` FROM `posts`')
     end
 
     it 'uses the table set on the repository' do
-      expect(ArticlesData.new.all.sql).to eq('SELECT `posts`.`title` FROM `posts`')
+      expect_sql(ArticlesData.new.all.sql).to eq('SELECT `posts`.`title` FROM `posts`')
     end
 
     it 'raises when a column is only on an unrelated table' do

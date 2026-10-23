@@ -23,6 +23,7 @@ class LowData
     def insert(source:, rows:)
       check_rows!(rows:, operator: '<<')
       check_insert_filter!(filter: source.filter)
+      check_returned!(source:, columns: @schema.columns(table: source.table))
       return insert_all(source:, rows:) if source.no_columns? && rows.is_a?(Array) && rows.map(&:keys).uniq.one?
 
       each_row(rows:) { |row| insert_row(source:, row:) }
@@ -32,6 +33,7 @@ class LowData
     def upsert(source:, rows:)
       check_rows!(rows:, operator: '<=')
       check_upsert_filter!(filter: source.filter)
+      check_returned!(source:, columns: @schema.columns(table: source.table))
 
       each_row(rows:) { |row| upsert_row(source:, row: source.filter.values.merge(row)) }
     end
@@ -87,12 +89,8 @@ class LowData
       read_back(source:, keys: row.slice(*target))
     end
 
-    # MySQL's ON DUPLICATE KEY UPDATE matches any unique key, so the named columns must be the table's only one.
     def mysql_upsert(source:, row:, target:)
-      unless unique_keys(table: source.table).map(&:sort) == [target.sort]
-        raise Error, "MySQL matches an upsert on any unique key, so #{target.join(', ')} must be #{source.table}'s only unique key"
-      end
-
+      check_mysql_keys!(table: source.table, keys: unique_keys(table: source.table), row:, target:)
       @database[source.table].on_duplicate_key_update(*updates(row:, target:).keys).insert(row)
       read_back(source:, keys: row.slice(*target))
     end
@@ -124,7 +122,6 @@ class LowData
     def returned(source:)
       return @schema.primary_key(table: source.table) if source.every_column?
 
-      check_returned!(source:, columns: @schema.columns(table: source.table))
       source.columns + source.renames.map { |name, column| Sequel.as(column, name) }
     end
 

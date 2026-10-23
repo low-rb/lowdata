@@ -14,3 +14,9 @@ group :development do
   gem 'rubocop', require: false
   gem 'sqlite3'
 end
+
+# Drivers for running the specs on Postgres and MySQL. Install with: bundle config set --local with databases
+group :databases, optional: true do
+  gem 'pg'
+  gem 'trilogy'
+end

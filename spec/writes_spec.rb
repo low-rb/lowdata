@@ -21,6 +21,9 @@ class WritesData < LowData
   def tag(name, row = {}) = Tags(name:) <= row
   def tag_returning(name, row = {}) = Tags(name:)[:id, :name] <= row
   def tag_by_key(row) = Tags <= row
+  def upsert_post(row) = Posts <= row
+  def upsert_titled(title, row) = Posts(title:) <= row
+  def tag_by_unindexed(row) = Tags(id: 1, name: 'ruby') <= row
   def tag_range(row) = Tags(id: 1..) <= row
   def tag_block(row) = Tags { id > 1 } <= row
   def compare = Posts[:id] <= Users[:id]
@@ -127,10 +130,16 @@ RSpec.describe 'Writing with <<, <=, []= and delete' do
     end
 
     it 'writes the round brackets and the row together' do
-      database[:tags].insert(id: 7, name: 'ruby')
+      database.add_index(:posts, :title, unique: true)
 
-      expect(repository.tag_by_key({ id: 7, name: 'sql' })).to eq({ id: 7 })
-      expect(database[:tags].all).to eq([{ id: 7, name: 'sql' }])
+      expect(repository.upsert_titled('Fresh', { views: 7 })).to eq({ id: 4 })
+      expect(database[:posts][id: 4]).to include(title: 'Fresh', views: 7)
+    end
+
+    it 'matches on the primary key without round brackets' do
+      expect(repository.upsert_post({ id: 1, title: 'Changed' })).to eq({ id: 1 })
+      expect(database[:posts][id: 1]).to include(title: 'Changed', views: 10)
+      expect(database[:posts].count).to eq(3)
     end
 
     it 'returns the columns in square brackets' do
@@ -138,10 +147,8 @@ RSpec.describe 'Writing with <<, <=, []= and delete' do
     end
 
     it 'upserts an array of rows' do
-      database[:tags].insert(id: 7, name: 'ruby')
-
-      expect(repository.tag_by_key([{ id: 7, name: 'sql' }, { id: 8, name: 'go' }])).to eq([{ id: 7 }, { id: 8 }])
-      expect(database[:tags].order(:id).select_map(:name)).to eq(%w[sql go])
+      expect(repository.upsert_post([{ id: 1, title: 'One' }, { id: 9, title: 'Nine' }])).to eq([{ id: 1 }, { id: 9 }])
+      expect(database[:posts].where(id: [1, 9]).order(:id).select_map(:title)).to eq(%w[One Nine])
     end
 
     it 'raises without round brackets when the row has no primary key' do
@@ -151,6 +158,18 @@ RSpec.describe 'Writing with <<, <=, []= and delete' do
     it 'raises for filters that match more than plain values' do
       expect { repository.tag_range({ name: 'ruby' }) }.to raise_error(ArgumentError, /matches one row by plain values/)
       expect { repository.tag_block({ name: 'ruby' }) }.to raise_error(ArgumentError, /matches one row by plain values/)
+    end
+
+    context 'on MySQL, which matches any unique key' do
+      before { skip 'MySQL only' unless database.database_type == :mysql }
+
+      it 'raises when the row sets another unique key, which could match a different row' do
+        expect { repository.tag_by_key({ id: 7, name: 'sql' }) }.to raise_error(LowData::Error, /the row also sets name/)
+      end
+
+      it "raises when the round brackets aren't a unique key" do
+        expect { repository.tag_by_unindexed({}) }.to raise_error(LowData::Error, /id, name isn't one of tags's/)
+      end
     end
 
     it "raises for a data expression, so it can't be mistaken for a comparison or a join" do

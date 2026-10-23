@@ -30,15 +30,10 @@ RSpec.describe 'Nesting joins with +' do
   end
 
   it 'loads the join with one query' do
-    queries = []
-    logger = Object.new
-    logger.define_singleton_method(:info) { |message| queries << message if message.include?('SELECT') }
-    database.loggers << logger
+    sql = queries { repository.nest_join.to_a }
 
-    repository.nest_join.to_a
-
-    expect(queries.length).to eq(2)
-    expect(queries.last).to include('INNER JOIN `comments`')
+    expect(sql.length).to eq(2)
+    expect_sql(sql.last).to include('INNER JOIN `comments`')
   end
 
   it 'sorts and limits the joined rows per parent' do
@@ -107,14 +102,7 @@ RSpec.describe 'Nesting joins with +' do
   end
 
   it 'loads the join and each table under it with one query each' do
-    queries = []
-    logger = Object.new
-    logger.define_singleton_method(:info) { |message| queries << message if message.include?('SELECT') }
-    database.loggers << logger
-
-    repository.nest_after_join.to_a
-
-    expect(queries.length).to eq(2)
+    expect(queries { repository.nest_after_join.to_a }.length).to eq(2)
   end
 
   it 'links through the table next to the + when more than one joined table links to the nested table' do

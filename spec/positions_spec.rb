@@ -34,8 +34,25 @@ RSpec.describe 'Nesting and joining by position' do
       expect(repository.siblings_sorted.to_a).to include({ username: 'bob', posts: [{ title: 'World' }], likes: [{ id: 1 }] })
     end
 
-    it 'raises when the chain continues after an array' do
-      expect { repository.after_array.to_a }.to raise_error(LowData::JoinError, /An array ends a \+ chain/)
+    it 'raises when the chain continues after an array, suggesting where in the array' do
+      expect { repository.after_array.to_a }.to raise_error(
+        LowData::JoinError,
+        'likes comes after an array, so it has no single table to nest in. Put it in the array: Posts + [Comments, Likes] ' \
+        'nests likes in posts, and Posts + [Comments + Likes] nests it in comments'
+      )
+    end
+
+    it 'suggests where in an array of chains' do
+      expect { repository.after_array_with_chain.to_a }.to raise_error(
+        LowData::JoinError,
+        'reviews comes after an array, so it has no single table to nest in. Put it in the array: ' \
+        'Users + [Posts + Comments, Likes, Reviews] nests reviews in users, and Users + [Posts + Comments, Likes + Reviews] ' \
+        'nests it in likes'
+      )
+    end
+
+    it 'raises when an array follows an array' do
+      expect { repository.array_after_array.to_a }.to raise_error(LowData::JoinError, /An array ends a \+ chain/)
     end
 
     it 'raises for an array of values' do

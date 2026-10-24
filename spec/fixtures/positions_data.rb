@@ -9,6 +9,8 @@ class PositionsData < LowData
   def siblings_chained = Posts[:title] + Comments[:body] + Likes[:id]
   def siblings_sorted = Users[:username] + [Posts[:title] ^ -Col[:views] * 1, Likes[:id]]
   def after_array = Posts[:title] + [Comments[:body]] + Likes[:id]
+  def after_array_with_chain = Users[:username] + [Posts[:title] + Comments[:body], Likes[:id]] + Reviews[:rating]
+  def array_after_array = Posts[:title] + [Comments[:body]] + [Likes[:id]]
   def array_of_values = Posts[:title] + [:body]
   def reach_back = Users[:username] + Posts[:title] + Comments[:body] + Likes(:user_id)[:id]
   def reach_back_outside = Posts[:title] + Comments[:body] + Likes(:user_id)[:id]

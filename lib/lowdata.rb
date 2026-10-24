@@ -44,6 +44,19 @@ class LowData
       @table ||= name && table_name(name.split('::').last.delete_suffix('Data'))
     end
 
+    # The Method Factory pattern, as in LowNode: each public instance method gets a class method of the same name, so
+    # `UsersData.update(1, attributes)` calls `UsersData.new.update(1, attributes)`. Defined when the instance method
+    # is, so it's a real method rather than a method_missing lookup. LowData's own class methods, like `table`, are kept.
+    def method_added(name)
+      super
+      return if self == LowData || !public_method_defined?(name) || respond_to?(name, true)
+      return unless name.match?(/\A[a-z_]\w*[?!]?\z/) # Setters like `title=` stay instance methods.
+
+      singleton_class.class_eval <<~RUBY, __FILE__, __LINE__ + 1
+        def #{name}(...) = new.#{name}(...) # def update(...) = new.update(...)
+      RUBY
+    end
+
     # Resolve undefined constants in a repository to tables, so `Users` and `BlogPosts` become :users and :blog_posts.
     # `Table` is the repository's own table, joined to whichever related tables own the columns asked for.
     def const_missing(name)

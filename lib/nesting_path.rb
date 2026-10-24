@@ -10,6 +10,8 @@ class LowData
   class NestingPath
     ARRAY_END_MESSAGE = 'An array ends a + chain, because it nests several tables. Put the rest of the chain in the ' \
                         'array, e.g. Users + [Posts + Comments, Orders]'
+    AFTER_ARRAY_MESSAGE = '%<child>s comes after an array, so it has no single table to nest in. Put it in the array: ' \
+                          '%<beside>s nests %<child>s in %<parent>s, and %<in_last>s nests it in %<last>s'
 
     # A node waiting for its children to be linked, and the entries from it down to the end of its chain.
     Entry = Struct.new(:node, :children, :tail, :closed) do
@@ -43,16 +45,19 @@ class LowData
 
     # Nests a segment and returns the path to the end of the chain.
     def attach(path:, segment:)
-      raise JoinError, ARRAY_END_MESSAGE if path.last.closed
       return siblings(path:, nodes: segment.nodes) if segment.is_a?(DataExpression::Siblings)
 
       child = @tree.entry(node: segment)
+      raise JoinError, after_array_message(array: path.last, child:) if path.last.closed
+
       parent = parent(path:, child:)
       parent.children << child
       path[0..path.index { |entry| entry.equal?(parent) }] + child.path
     end
 
     def siblings(path:, nodes:)
+      raise JoinError, ARRAY_END_MESSAGE if path.last.closed
+
       nodes.each { |node| path.last.children << @tree.entry(node:) }
       path.last.closed = true
       path
@@ -92,6 +97,26 @@ class LowData
 
     def linked?(entry, other)
       entry.tables.product(other.tables).any? { |table, other_table| @schema.linked?(table, other_table) }
+    end
+
+    # Suggests the two places in the array a table after it can go: beside its elements, or in its last one.
+    def after_array_message(array:, child:)
+      *elements, last = array.children
+      beside = [*elements, last, child].map { |entry| chained(entry:) }
+      in_last = [*elements.map { |entry| chained(entry:) }, "#{chained(entry: last)} + #{chained(entry: child)}"]
+      format(AFTER_ARRAY_MESSAGE, child: child.tables.first, parent: array.tables.last, last: last.path.last.tables.last,
+                                  beside: in_array(array:, elements: beside), in_last: in_array(array:, elements: in_last))
+    end
+
+    def in_array(array:, elements:) = "#{written(entry: array)} + [#{elements.join(', ')}]"
+
+    # An array element as written, with its whole chain: `Posts + Comments`.
+    def chained(entry:) = entry.path.map { |link| written(entry: link) }.join(' + ')
+
+    # A table as written in an expression, without its brackets: `Posts`, or `(Posts & Likes)` for a join.
+    def written(entry:)
+      names = entry.tables.map { |table| LowData.constant_name(table) }
+      names.one? ? names.first : "(#{names.join(' & ')})"
     end
 
     # Suggests an array, or naming the foreign key that reaches back to the earlier table.

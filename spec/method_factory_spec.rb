@@ -10,8 +10,10 @@ class FactoryData < LowData
   def greet(name, punctuation: '!') = "Hello #{name}#{punctuation}"
   def yielded = yield
   def ready? = true
-  def table = :instance_table
   def title=(value); end
+  private def inline_secret = 'private' # rubocop:disable Style/AccessModifierDeclarations
+  def later_secret = 'private'
+  private :later_secret
 
   private
 
@@ -20,6 +22,7 @@ end
 
 class ChildFactoryData < FactoryData
   def greet(name, punctuation: '!') = "Hi #{name}#{punctuation}"
+  private def ready? = false # rubocop:disable Style/AccessModifierDeclarations
 end
 
 RSpec.describe 'Method Factory' do
@@ -42,14 +45,27 @@ RSpec.describe 'Method Factory' do
     expect(ChildFactoryData.greet('Rudolph')).to eq('Hi Rudolph!')
   end
 
-  it "keeps LowData's class methods" do
-    expect(FactoryData.table).to eq(:posts)
-    expect(FactoryData.new.table).to eq(:instance_table)
+  it 'keeps existing class methods, warning that the instance method has none' do
+    repository = nil
+    expect { repository = Class.new(LowData) { def table = :instance_table }.tap { |data| data.table = :posts } }
+      .to output(/#table has no class method, because .*\.table exists/).to_stderr
+
+    expect(repository.table).to eq(:posts)
+    expect(repository.new.table).to eq(:instance_table)
   end
 
   it 'does not define class methods for private methods or setters' do
     expect(FactoryData.respond_to?(:secret, true)).to be(false)
     expect(FactoryData.respond_to?(:title=)).to be(false)
+  end
+
+  it 'raises for methods made private after they are defined' do
+    expect { FactoryData.inline_secret }.to raise_error(NoMethodError, /private method 'inline_secret'/)
+    expect { FactoryData.later_secret }.to raise_error(NoMethodError, /private method 'later_secret'/)
+  end
+
+  it 'raises when a subclass makes an inherited method private' do
+    expect { ChildFactoryData.ready? }.to raise_error(NoMethodError, /private method 'ready\?'/)
   end
 
   context 'with a database' do

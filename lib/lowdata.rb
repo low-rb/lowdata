@@ -46,14 +46,18 @@ class LowData
 
     # The Method Factory pattern, as in LowNode: each public instance method gets a class method of the same name, so
     # `UsersData.update(1, attributes)` calls `UsersData.new.update(1, attributes)`. Defined when the instance method
-    # is, so it's a real method rather than a method_missing lookup. LowData's own class methods, like `table`, are kept.
+    # is, so it's a real method rather than a method_missing lookup. Existing class methods, like `table`, are kept.
     def method_added(name)
       super
-      return if self == LowData || !public_method_defined?(name) || respond_to?(name, true)
+      return if self == LowData || !public_method_defined?(name)
       return unless name.match?(/\A[a-z_]\w*[?!]?\z/) # Setters like `title=` stay instance methods.
+      return if factory_method?(name) # A parent's class method already calls `new` on this class.
+      return warn(class_method_exists_message(name:)) if respond_to?(name, true)
 
+      (@factory_methods ||= []) << name
+      # public_send because `private def secret` makes the method private only after it's added.
       singleton_class.class_eval <<~RUBY, __FILE__, __LINE__ + 1
-        def #{name}(...) = new.#{name}(...) # def update(...) = new.update(...)
+        def #{name}(...) = new.public_send(:#{name}, ...) # def update(...) = new.public_send(:update, ...)
       RUBY
     end
 
@@ -76,6 +80,14 @@ class LowData
     end
 
     private
+
+    def factory_method?(name)
+      self < LowData && (@factory_methods&.include?(name) || superclass.send(:factory_method?, name))
+    end
+
+    def class_method_exists_message(name:)
+      "#{self}##{name} has no class method, because #{self}.#{name} exists. Call #{self}.new.#{name}"
+    end
 
     def inverted_table
       raise ConfigError, "Set the table for #{self}, e.g. self.table = :posts" if table.nil?

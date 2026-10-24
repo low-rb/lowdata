@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Minor features that don't break backwards compatibility are released as patches.
 
+## 0.4.0
+
+### Added
+
+- Mirror Method Factory Pattern: Define an instance method then call it on the class, which creates an instance then calls the instance method
+
 ## 0.3.0
 
 ### Changed

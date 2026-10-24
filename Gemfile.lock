@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    lowdata (0.3.0)
+    lowdata (0.4.0)
       expressions (~> 0.4)
       lowtype (~> 1.6)
       sequel (~> 5.0)
@@ -12,7 +12,7 @@ GEM
     ast (2.4.3)
     bigdecimal (4.1.3)
     diff-lcs (1.6.2)
-    dirload (0.7.0)
+    dirload (0.7.1)
       lowkey
     erb (6.0.7)
     expressions (0.4.0)
@@ -26,15 +26,15 @@ GEM
     language_server-protocol (3.17.0.6)
     lint_roller (1.1.0)
     logger (1.7.0)
-    lowkey (0.7.0)
+    lowkey (0.7.1)
       prism
-    lowtype (1.6.0)
+    lowtype (1.6.1)
       dirload
       expressions (~> 0.1)
-      lowkey (~> 0.5)
+      lowkey (>= 0.7.1)
       trees
     parallel (2.3.0)
-    parser (3.3.12.0)
+    parser (3.3.13.0)
       ast (~> 2.4.1)
       racc
     pg (1.7.0)
@@ -143,7 +143,7 @@ CHECKSUMS
   bigdecimal (4.1.3) sha256=61ebe1e5e559bdc3cc6f2c0ee7f427321fc838f59611c294356eb04d6e21cf66
   bundler (4.0.18) sha256=02d9a17429de1847b4e0c9f27a9ee4b20c0a74c0a641b4e77195d6019e3618ac
   diff-lcs (1.6.2) sha256=9ae0d2cba7d4df3075fe8cd8602a8604993efc0dfa934cff568969efb1909962
-  dirload (0.7.0) sha256=3bb91af6e2495cd5b76e469cdb6e30a85b3f046e7d1669e2390af5d897c39b7e
+  dirload (0.7.1) sha256=9846fffff0472590a4451dda7d639078ce098d5b1a3e44a44a6c7448f2e3c5e5
   erb (6.0.7) sha256=c5ca6dc25b0ef974a44dc8f59fe847577122483b1968a38dec305c60bf91ee92
   expressions (0.4.0) sha256=83470229d23c091c1d054b45b0cc850cf913d9daf92abc1de4f4cc5d4b4c7aef
   io-console (0.9.4) sha256=a403304f32928ee85e56d457b4612ca43f2703b561a3258844992bd24085fbb1
@@ -152,11 +152,11 @@ CHECKSUMS
   language_server-protocol (3.17.0.6) sha256=5ef2c0c138f8267e1bc631d3328347d354f96724b0af22f2c79516120443b7f0
   lint_roller (1.1.0) sha256=2c0c845b632a7d172cb849cc90c1bce937a28c5c8ccccb50dfd46a485003cc87
   logger (1.7.0) sha256=196edec7cc44b66cfb40f9755ce11b392f21f7967696af15d274dde7edff0203
-  lowdata (0.3.0)
-  lowkey (0.7.0) sha256=f058768d33ece32fe30690839b0f1cb80db2679b25617777cfd68301a951eebb
-  lowtype (1.6.0) sha256=f60b005a147a0c04390f4420b7e345c7477a5d7eb65c8b0e670112327d74981d
+  lowdata (0.4.0)
+  lowkey (0.7.1) sha256=f2d5c2834d7f201d2536691dc91e9d4bc77cb361e46dace5674e42abbe39df6f
+  lowtype (1.6.1) sha256=22844bcfa7a3a2a5b82887e50f308483b0e6c8e417c429441bfb0881641238fd
   parallel (2.3.0) sha256=f75a3e904101ce6a1ccb6b8dc800cbafd42166d83330192438dcf29395167a6f
-  parser (3.3.12.0) sha256=21a6d7f755d5a24dfbdc6e6b772e4e879a52e7631a88bc5a3a134606052c9828
+  parser (3.3.13.0) sha256=e02f9b63c2fe05b0c68f692ba4df89b3cb113b663964f75d988fbebfd6c3deca
   pg (1.7.0) sha256=f7b536501284e883d4c9ef86dbde0313063e4aaafc23575b0017b0d572a26afb
   pg (1.7.0-aarch64-linux) sha256=101dd3a261000eb64b03ff41a5890674b735b626dbdce88652969b59fb0b1157
   pg (1.7.0-aarch64-linux-musl) sha256=5ca4d4619a1a39fb22de47350130956ece69cf0512858ee68dca926e46f65e4a

@@ -15,11 +15,14 @@ class PostsData < LowData
 end
 ```
 
-...generates this SQL query:
+<details>
+<summary>Resulting SQL</summary>
+
 ```sql
 SELECT title, body, user_id FROM posts
 SELECT username, id FROM users WHERE (id IN (...))
 ```
+</details>
 
 ...which results in a list of posts with each post's user nested inside it:
 ```ruby
@@ -41,25 +44,39 @@ SELECT username, id FROM users WHERE (id IN (...))
 ```ruby
 Users[:username] + Posts[:title] + Comments[:body]
 
-# SELECT username, id FROM users
-# SELECT title, user_id, id FROM posts WHERE (user_id IN (...))
-# SELECT body, post_id FROM comments WHERE (post_id IN (...))
 # => [
 #   { username: 'alice', posts: [{ title: 'Hello', comments: [{ body: 'Nice' }] }] },
 #   { username: 'carol', posts: [] }
 # ]
 ```
 
+<details>
+<summary>Resulting SQL</summary>
+
+```sql
+SELECT username, id FROM users
+SELECT title, user_id, id FROM posts WHERE (user_id IN (...))
+SELECT body, post_id FROM comments WHERE (post_id IN (...))
+```
+</details>
+
 Each row of the first table appears once, and each table nests in the one before it, so the expression has the shape of the result. Put tables side by side in an array:
 
 ```ruby
 Posts[:title] + [Comments[:body], Likes]
 
-# SELECT title, id FROM posts
-# SELECT body, post_id FROM comments WHERE (post_id IN (...))
-# SELECT likes.* FROM likes WHERE (post_id IN (...))
 # => [{ title: 'Hello', comments: [{ body: 'Nice' }], likes: [{ id: 1, ... }, { id: 2, ... }] }]
 ```
+
+<details>
+<summary>Resulting SQL</summary>
+
+```sql
+SELECT title, id FROM posts
+SELECT body, post_id FROM comments WHERE (post_id IN (...))
+SELECT likes.* FROM likes WHERE (post_id IN (...))
+```
+</details>
 
 Array items can be chains: `Users + [Posts + Comments, Orders]`. To nest in an earlier table, name its foreign key: `Users + Posts + Orders(:user_id)` nests orders in users.
 
@@ -75,11 +92,18 @@ Tables can also nest inside another table so that the input has the shape of the
 ```ruby
 Users[:username, Posts[:title, Likes]]
 
-# SELECT username, id FROM users
-# SELECT title, user_id, id FROM posts WHERE (user_id IN (...))
-# SELECT likes.* FROM likes WHERE (post_id IN (...))
 # => [{ username: 'alice', posts: [{ title: 'Hello', likes: [{ id: 1, ... }] }] }]
 ```
+
+<details>
+<summary>Resulting SQL</summary>
+
+```sql
+SELECT username, id FROM users
+SELECT title, user_id, id FROM posts WHERE (user_id IN (...))
+SELECT likes.* FROM likes WHERE (post_id IN (...))
+```
+</details>
 
 `+` is another way to write this: `Users[:username] + Posts[:title] + Likes` returns the same data as the example above, and `Posts[:title] + Users[:username]` the same as `Posts[:title, Users[:username]]`.
 
@@ -88,11 +112,18 @@ A keyword names a nested table, and `author:` follows `author_id`, so the same t
 ```ruby
 Reviews[:rating, author: Users[:username], editor: Users[:username]]
 
-# SELECT rating, author_id, editor_id FROM reviews
-# SELECT username, id FROM users WHERE (id IN (...))
-# SELECT username, id FROM users WHERE (id IN (...))
 # => [{ rating: 5, author: { username: 'alice' }, editor: { username: 'bob' } }]
 ```
+
+<details>
+<summary>Resulting SQL</summary>
+
+```sql
+SELECT rating, author_id, editor_id FROM reviews
+SELECT username, id FROM users WHERE (id IN (...))
+SELECT username, id FROM users WHERE (id IN (...))
+```
+</details>
 
 ### Nesting joins
 
@@ -101,10 +132,17 @@ A [join](#joins) nests as flat rows, linked through its first table, the one wri
 ```ruby
 Users[:username] + (Posts[:title] & Comments[:body])
 
-# SELECT username, id FROM users
-# SELECT posts.title, comments.body, posts.user_id AS lowdata_link FROM posts INNER JOIN comments ON (comments.post_id = posts.id) WHERE (posts.user_id IN (...))
 # => [{ username: 'alice', posts: [{ title: 'Hello', body: 'Nice' }] }, { username: 'bob', posts: [] }]
 ```
+
+<details>
+<summary>Resulting SQL</summary>
+
+```sql
+SELECT username, id FROM users
+SELECT posts.title, comments.body, posts.user_id AS lowdata_link FROM posts INNER JOIN comments ON (comments.post_id = posts.id) WHERE (posts.user_id IN (...))
+```
+</details>
 
 The operator decides which rows the join keeps: `<` also keeps posts without comments. Joins can nest in brackets too, and filters apply to the joined rows.
 
@@ -113,14 +151,21 @@ A sort or limit inside the parentheses applies to each parent's joined rows, by 
 ```ruby
 Users[:username] + (Posts[:title] & Comments[:body] ^ Col[:body] * 2)
 
-# SELECT username, id FROM users
-# SELECT * FROM (
-#   SELECT posts.title, comments.body, posts.user_id AS lowdata_link,
-#     row_number() OVER (PARTITION BY posts.user_id ORDER BY comments.body) AS lowdata_row_number
-#   FROM posts INNER JOIN comments ON (comments.post_id = posts.id) WHERE (posts.user_id IN (...))
-# ) AS t1 WHERE ((lowdata_row_number >= 1) AND (lowdata_row_number <= 2)) ORDER BY lowdata_row_number
 # => Users, each with their first 2 post and comment rows by comment body
 ```
+
+<details>
+<summary>Resulting SQL</summary>
+
+```sql
+SELECT username, id FROM users
+SELECT * FROM (
+  SELECT posts.title, comments.body, posts.user_id AS lowdata_link,
+    row_number() OVER (PARTITION BY posts.user_id ORDER BY comments.body) AS lowdata_row_number
+  FROM posts INNER JOIN comments ON (comments.post_id = posts.id) WHERE (posts.user_id IN (...))
+) AS t1 WHERE ((lowdata_row_number >= 1) AND (lowdata_row_number <= 2)) ORDER BY lowdata_row_number
+```
+</details>
 
 - Ruby runs `*`, then `&`, then `^`, so the example above is `(Posts[:title] & Comments[:body]) ^ (Col[:body] * 2)`.
 - `<`, `>` and `<=>` run after `^`, so those joins need parentheses of their own: `(Posts < Comments) ^ Col[:body]`.
@@ -135,13 +180,20 @@ Only the "many" side can nest a join, because joined rows can repeat the row the
 ```ruby
 Posts[:title] + (PostTags[:created_at] & Tags[:name])
 
-# SELECT title, id FROM posts
-# SELECT post_tags.created_at, tags.name, post_tags.post_id AS lowdata_link FROM post_tags INNER JOIN tags ON (post_tags.tag_id = tags.id) WHERE (post_tags.post_id IN (...))
 # => [
 #   { title: 'Hello', post_tags: [{ created_at: 2026-10-01, name: 'ruby' }, { created_at: 2026-10-02, name: 'sql' }] },
 #   { title: 'World', post_tags: [] }
 # ]
 ```
+
+<details>
+<summary>Resulting SQL</summary>
+
+```sql
+SELECT title, id FROM posts
+SELECT post_tags.created_at, tags.name, post_tags.post_id AS lowdata_link FROM post_tags INNER JOIN tags ON (post_tags.tag_id = tags.id) WHERE (post_tags.post_id IN (...))
+```
+</details>
 
 The tags nest under `post_tags`. To call them `tags`, nest the join [in square brackets](#inline-nesting): `Posts[:title, tags: PostTags[:created_at] & Tags[:name]]`. Use `PostTags[]` to leave out its columns, returning `tags: [{ name: 'ruby' }, { name: 'sql' }]`.
 
@@ -152,13 +204,20 @@ Tables can nest under a join too. Each joined row gets its own nested rows, link
 ```ruby
 (Users[:username] & Posts[:title]) + Comments[:body]
 
-# SELECT users.username, posts.title, posts.id AS lowdata_posts_id FROM users INNER JOIN posts ON (posts.user_id = users.id)
-# SELECT body, post_id FROM comments WHERE (post_id IN (...))
 # => [
 #   { username: 'alice', title: 'Hello', comments: [{ body: 'Nice' }] },
 #   { username: 'bob', title: 'World', comments: [] }
 # ]
 ```
+
+<details>
+<summary>Resulting SQL</summary>
+
+```sql
+SELECT users.username, posts.title, posts.id AS lowdata_posts_id FROM users INNER JOIN posts ON (posts.user_id = users.id)
+SELECT body, post_id FROM comments WHERE (post_id IN (...))
+```
+</details>
 
 As with tables, a table the joined rows point to nests as an object: `(Comments[:body] & Posts[:title]) + Users[:username]` nests each row's `user:`.
 
@@ -167,13 +226,20 @@ As with tables, a table the joined rows point to nests as an object: `(Comments[
 ```ruby
 (Customers[:name] & Orders[:total]) + LineItems[:product, :quantity] ^ -Col[:total]
 
-# SELECT customers.name, orders.total, orders.id AS lowdata_orders_id FROM customers INNER JOIN orders ON (orders.customer_id = customers.id) ORDER BY orders.total DESC
-# SELECT product, quantity, order_id FROM line_items WHERE (order_id IN (...))
 # => [
 #   { name: 'Acme', total: 120, line_items: [{ product: 'Anvil', quantity: 2 }, { product: 'Rope', quantity: 1 }] },
 #   { name: 'Globex', total: 80, line_items: [{ product: 'Lamp', quantity: 4 }] }
 # ]
 ```
+
+<details>
+<summary>Resulting SQL</summary>
+
+```sql
+SELECT customers.name, orders.total, orders.id AS lowdata_orders_id FROM customers INNER JOIN orders ON (orders.customer_id = customers.id) ORDER BY orders.total DESC
+SELECT product, quantity, order_id FROM line_items WHERE (order_id IN (...))
+```
+</details>
 
 ## Joins
 
@@ -181,29 +247,57 @@ As with tables, a table the joined rows point to nests as an object: `(Comments[
 
 ```ruby
 Users[:username] & Posts[:title]
-# SELECT users.username, posts.title FROM users INNER JOIN posts ON (posts.user_id = users.id)
 ```
+
+<details>
+<summary>Resulting SQL</summary>
+
+```sql
+SELECT users.username, posts.title FROM users INNER JOIN posts ON (posts.user_id = users.id)
+```
+</details>
 
 ### Left join
 
 ```ruby
 Users[:username] < Posts[:title]
-# SELECT users.username, posts.title FROM users LEFT JOIN posts ON (posts.user_id = users.id)
 ```
+
+<details>
+<summary>Resulting SQL</summary>
+
+```sql
+SELECT users.username, posts.title FROM users LEFT JOIN posts ON (posts.user_id = users.id)
+```
+</details>
 
 ### Right join
 
 ```ruby
 Users[:username] > Posts[:title]
-# SELECT users.username, posts.title FROM users RIGHT JOIN posts ON (posts.user_id = users.id)
 ```
+
+<details>
+<summary>Resulting SQL</summary>
+
+```sql
+SELECT users.username, posts.title FROM users RIGHT JOIN posts ON (posts.user_id = users.id)
+```
+</details>
 
 ### Full outer join
 
 ```ruby
 Users[:username] <=> Posts[:title]
-# SELECT users.username, posts.title FROM users FULL JOIN posts ON (posts.user_id = users.id)
 ```
+
+<details>
+<summary>Resulting SQL</summary>
+
+```sql
+SELECT users.username, posts.title FROM users FULL JOIN posts ON (posts.user_id = users.id)
+```
+</details>
 
 MySQL has no `FULL JOIN`, so `<=>` raises there; use `<` or `>` instead.
 
@@ -229,13 +323,21 @@ Rows are hashes, so joined tables can't both return an `id`. Rename a column wit
 
 ```ruby
 Users[:username, user_id: :id] & Posts[:title, post_id: :id]
-# SELECT users.username, users.id AS user_id, posts.title, posts.id AS post_id FROM users INNER JOIN posts ON (posts.user_id = users.id)
 # => [{ username: 'alice', user_id: 1, title: 'Hello', post_id: 1 }]
 
 Posts[:id, headline: :title]
-# SELECT posts.id, posts.title AS headline FROM posts
 # => [{ id: 1, headline: 'Hello' }]
 ```
+
+<details>
+<summary>Resulting SQL</summary>
+
+```sql
+SELECT users.username, users.id AS user_id, posts.title, posts.id AS post_id FROM users INNER JOIN posts ON (posts.user_id = users.id)
+
+SELECT posts.id, posts.title AS headline FROM posts
+```
+</details>
 
 The key is the new name and the value is the column. Renames work in nested tables, joins and `Table[]`, and go last in the brackets: `Users[Posts[:title], handle: :username]`.
 
@@ -249,11 +351,17 @@ Data Expressions can invert the usual database query logic; instead of building 
 class PostsData < LowData
   def all
     Table[:username, :title, :body]
-
-    # SELECT users.username, posts.title, posts.body FROM posts LEFT JOIN users ON (posts.user_id = users.id)
   end
 end
 ```
+
+<details>
+<summary>Resulting SQL</summary>
+
+```sql
+SELECT users.username, posts.title, posts.body FROM posts LEFT JOIN users ON (posts.user_id = users.id)
+```
+</details>
 
 This returns the `Posts + Users` example above, flattened to one row per post. In `PostsData`, `Table` is posts, and LowData finds `:username` in users through `posts.user_id`.
 
@@ -263,27 +371,46 @@ Use round brackets `()` after a table name to filter its rows (square brackets a
 
 ```ruby
 Posts(published: true)[:title]
-# SELECT posts.title FROM posts WHERE (posts.published = TRUE)
 
 Posts(views: 100..)[:title]
-# SELECT posts.title FROM posts WHERE (posts.views >= 100)
 
 Posts(status: %w[draft live])[:title]
-# SELECT posts.title FROM posts WHERE (posts.status IN ('draft', 'live'))
 
 Posts(deleted_at: nil)[:title]
-# SELECT posts.title FROM posts WHERE (posts.deleted_at IS NULL)
 ```
+
+<details>
+<summary>Resulting SQL</summary>
+
+```sql
+SELECT posts.title FROM posts WHERE (posts.published = TRUE)
+
+SELECT posts.title FROM posts WHERE (posts.views >= 100)
+
+SELECT posts.title FROM posts WHERE (posts.status IN ('draft', 'live'))
+
+SELECT posts.title FROM posts WHERE (posts.deleted_at IS NULL)
+```
+</details>
 
 A block holds more complex conditions, where a name is a column ([Sequel virtual rows](https://sequel.jeremyevans.net/rdoc/files/doc/virtual_rows_rdoc.html)):
 
 ```ruby
 Posts { (views > 100) | featured }[:title]
-# SELECT posts.title FROM posts WHERE ((posts.views > 100) OR posts.featured)
 
 Posts(published: true) { views > minimum }[:title]
-# SELECT posts.title FROM posts WHERE ((posts.published = TRUE) AND (posts.views > 50)), when minimum is 50
 ```
+
+<details>
+<summary>Resulting SQL</summary>
+
+```sql
+SELECT posts.title FROM posts WHERE ((posts.views > 100) OR posts.featured)
+
+-- When minimum is 50:
+SELECT posts.title FROM posts WHERE ((posts.published = TRUE) AND (posts.views > 50))
+```
+</details>
 
 Use `&` and `|`, not `&&` and `||`, which Ruby can't overload: `views > 100 && featured` silently becomes `featured`. To use the repository's methods or instance variables, take an argument: `Posts { |post| post.views > minimum_views }`.
 
@@ -292,20 +419,30 @@ A table in round brackets keeps the rows that have related rows in it:
 ```ruby
 # Users with a published post.
 Users(Posts(published: true))[:username]
-# SELECT users.username FROM users WHERE (EXISTS (SELECT 1 FROM posts WHERE ((posts.user_id = users.id) AND (posts.published = TRUE))))
 
 # Users with no posts.
 Users(~Posts)[:username]
-# SELECT users.username FROM users WHERE NOT (EXISTS (SELECT 1 FROM posts WHERE (posts.user_id = users.id)))
 
 # Users with 3 or more posts.
 Users(Posts => 3..)[:username]
-# SELECT users.username FROM users WHERE ((SELECT count(*) FROM posts WHERE (posts.user_id = users.id)) >= 3)
 
 # A name picks the foreign key to follow.
 Reviews(author: Users(username: 'alice'))[:rating]
-# SELECT reviews.rating FROM reviews WHERE (EXISTS (SELECT 1 FROM users WHERE ((users.id = reviews.author_id) AND (users.username = 'alice'))))
 ```
+
+<details>
+<summary>Resulting SQL</summary>
+
+```sql
+SELECT users.username FROM users WHERE (EXISTS (SELECT 1 FROM posts WHERE ((posts.user_id = users.id) AND (posts.published = TRUE))))
+
+SELECT users.username FROM users WHERE NOT (EXISTS (SELECT 1 FROM posts WHERE (posts.user_id = users.id)))
+
+SELECT users.username FROM users WHERE ((SELECT count(*) FROM posts WHERE (posts.user_id = users.id)) >= 3)
+
+SELECT reviews.rating FROM reviews WHERE (EXISTS (SELECT 1 FROM users WHERE ((users.id = reviews.author_id) AND (users.username = 'alice'))))
+```
+</details>
 
 On a nested table, a filter only filters the nested rows: `Users[:username] + Posts(published: true)[:title]` returns every user. To filter both, reuse the filtered table:
 
@@ -313,10 +450,16 @@ On a nested table, a filter only filters the nested rows: `Users[:username] + Po
 # Only users with published posts, and only those posts.
 published = Posts(published: true)
 Users(published)[:username] + published[:title]
-
-# SELECT username, id FROM users WHERE (EXISTS (SELECT 1 FROM posts WHERE ((posts.user_id = users.id) AND (posts.published = TRUE))))
-# SELECT title, user_id FROM posts WHERE ((posts.published = TRUE) AND (user_id IN (...)))
 ```
+
+<details>
+<summary>Resulting SQL</summary>
+
+```sql
+SELECT username, id FROM users WHERE (EXISTS (SELECT 1 FROM posts WHERE ((posts.user_id = users.id) AND (posts.published = TRUE))))
+SELECT title, user_id FROM posts WHERE ((posts.published = TRUE) AND (user_id IN (...)))
+```
+</details>
 
 In [joins](#joins), filters go in the `WHERE` clause. For long expressions, see [Multi-line expressions](#multi-line-expressions).
 
@@ -326,17 +469,27 @@ In [joins](#joins), filters go in the `WHERE` clause. For long expressions, see 
 
 ```ruby
 Posts[:title] ^ Col[:views]
-# SELECT posts.title FROM posts ORDER BY posts.views
 
 Posts[:title] ^ Col[:views, :title]
-# SELECT posts.title FROM posts ORDER BY posts.views, posts.title
 
 Posts[:title] ^ -Col[:views]
-# SELECT posts.title FROM posts ORDER BY posts.views DESC
 
 Posts[:title] ^ -Col[:views] + Col[:title]
-# SELECT posts.title FROM posts ORDER BY posts.views DESC, posts.title
 ```
+
+<details>
+<summary>Resulting SQL</summary>
+
+```sql
+SELECT posts.title FROM posts ORDER BY posts.views
+
+SELECT posts.title FROM posts ORDER BY posts.views, posts.title
+
+SELECT posts.title FROM posts ORDER BY posts.views DESC
+
+SELECT posts.title FROM posts ORDER BY posts.views DESC, posts.title
+```
+</details>
 
 Rows without a value sort last either way, on every database, so `Posts ^ -Col[:views] * 10` is the 10 most viewed.
 
@@ -344,14 +497,23 @@ Rows without a value sort last either way, on every database, so `Posts ^ -Col[:
 
 ```ruby
 Posts[:title] * 10
-# SELECT posts.title FROM posts LIMIT 10
 
 Posts[:title] ^ -Col[:views][20...40]
-# SELECT posts.title FROM posts ORDER BY posts.views DESC LIMIT 20 OFFSET 20
 
 (Posts[:title] / 20)[2] # the third page of 20
-# SELECT posts.title FROM posts LIMIT 20 OFFSET 40
 ```
+
+<details>
+<summary>Resulting SQL</summary>
+
+```sql
+SELECT posts.title FROM posts LIMIT 10
+
+SELECT posts.title FROM posts ORDER BY posts.views DESC LIMIT 20 OFFSET 20
+
+SELECT posts.title FROM posts LIMIT 20 OFFSET 40
+```
+</details>
 
 Rows and pages count from 0. A limit binds tighter than `^`, so it needs no parentheses, except around pages before `[page]`.
 
@@ -360,13 +522,20 @@ On a nested table, a sort or limit applies to each parent's nested rows:
 ```ruby
 Users[:username] + (Posts[:title] ^ -Col[:views] * 3) ^ Col[:username]
 
-# SELECT username, id FROM users ORDER BY users.username
-# SELECT * FROM (
-#   SELECT title, user_id, row_number() OVER (PARTITION BY posts.user_id ORDER BY posts.views DESC) AS lowdata_row_number
-#   FROM posts WHERE (user_id IN (...))
-# ) AS t1 WHERE ((lowdata_row_number >= 1) AND (lowdata_row_number <= 3)) ORDER BY lowdata_row_number
 # => Users alphabetically, each with their 3 most viewed posts
 ```
+
+<details>
+<summary>Resulting SQL</summary>
+
+```sql
+SELECT username, id FROM users ORDER BY users.username
+SELECT * FROM (
+  SELECT title, user_id, row_number() OVER (PARTITION BY posts.user_id ORDER BY posts.views DESC) AS lowdata_row_number
+  FROM posts WHERE (user_id IN (...))
+) AS t1 WHERE ((lowdata_row_number >= 1) AND (lowdata_row_number <= 3)) ORDER BY lowdata_row_number
+```
+</details>
 
 After `&`, a sort uses whichever joined table has the column. Wrap `<`, `>` and `<=>` joins in parentheses first: `(Users < Posts) ^ Col[:username]`. After `+`, a sort applies to the first table.
 
@@ -406,7 +575,6 @@ Square brackets never filter what goes in, so pick the columns from params yours
 
 ```ruby
 Posts << { title: 'Hello', user_id: 1 }
-# INSERT INTO posts (title, user_id) VALUES ('Hello', 1) RETURNING id
 # => { id: 7 }
 
 Posts[:id, :created_at] << { title: 'Hello', user_id: 1 }
@@ -416,13 +584,28 @@ Posts << [{ title: 'Hello' }, { title: 'World' }]
 # => [{ id: 7 }, { id: 8 }], in one transaction
 ```
 
+<details>
+<summary>Resulting SQL</summary>
+
+```sql
+INSERT INTO posts (title, user_id) VALUES ('Hello', 1) RETURNING id
+```
+</details>
+
 Empty brackets return nothing, which inserts many rows in one statement rather than one by one:
 
 ```ruby
 Posts[] << [{ title: 'Hello' }, { title: 'World' }]
-# INSERT INTO posts (title) VALUES ('Hello'), ('World')
 # => [{}, {}]
 ```
+
+<details>
+<summary>Resulting SQL</summary>
+
+```sql
+INSERT INTO posts (title) VALUES ('Hello'), ('World')
+```
+</details>
 
 An insert adds new rows, so round brackets raise: `Posts(slug: 'hello') << row` is an upsert.
 
@@ -432,12 +615,19 @@ An insert adds new rows, so round brackets raise: `Posts(slug: 'hello') << row` 
 
 ```ruby
 Posts(slug: 'hello') <= { title: 'Hello' }
-# INSERT INTO posts (slug, title) VALUES ('hello', 'Hello')
-#   ON CONFLICT (slug) DO UPDATE SET title = excluded.title RETURNING id
 # => { id: 7 }
 
 Posts <= { id: 7, title: 'Hello' } # Without round brackets, the primary key matches.
 ```
+
+<details>
+<summary>Resulting SQL</summary>
+
+```sql
+INSERT INTO posts (slug, title) VALUES ('hello', 'Hello')
+  ON CONFLICT (slug) DO UPDATE SET title = excluded.title RETURNING id
+```
+</details>
 
 The matched columns need a unique index, and round brackets take plain values only. On MySQL, which matches any unique key, the row mustn't set every column of another unique key.
 
@@ -457,12 +647,19 @@ Under `ruby -w`, an upsert mid-method warns `possibly useless use of <= in void 
 
 ```ruby
 Posts(id: 1)[:title] = 'New'
-# UPDATE posts SET title = 'New' WHERE (posts.id = 1)
 
 Posts(id: 1)[:title, :body] = ['New', '...']
 Posts(published: false) { created_at < cutoff }[] = { archived: true }
 Users(~Posts)[:active] = false
 ```
+
+<details>
+<summary>Resulting SQL</summary>
+
+```sql
+UPDATE posts SET title = 'New' WHERE (posts.id = 1)
+```
+</details>
 
 Ruby makes an assignment return its right-hand side, so an update returns the assigned value rather than a count.
 
@@ -472,9 +669,16 @@ Ruby makes an assignment return its right-hand side, so an update returns the as
 
 ```ruby
 Posts(id: 1).delete
-# DELETE FROM posts WHERE (posts.id = 1)
 # => 1
 ```
+
+<details>
+<summary>Resulting SQL</summary>
+
+```sql
+DELETE FROM posts WHERE (posts.id = 1)
+```
+</details>
 
 ### Every row
 

@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Minor features that don't break backwards compatibility are released as patches.
 
+## 0.4.1
+
+### Added
+
+- `LowData::Queries` for a module of queries that repositories share, so its tables are found as they are in a repository
+- An included module's queries are class methods of the repository, as its own methods are
+
 ## 0.4.0
 
 ### Added

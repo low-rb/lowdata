@@ -768,3 +768,25 @@ end
 ```
 
 Each method is short, named and can be tested on its own, and `authors` reads like a sentence.
+
+**Share queries between repositories.** Write them in a module that includes `LowData::Queries`, and include that in each repository:
+
+```ruby
+module LatestQueries
+  include LowData::Queries
+
+  def latest(count: 10) = Table(published: true)[:title, :username] ^ -Col[:created_at] * count
+end
+
+class PostsData < LowData
+  include LatestQueries
+end
+
+class VideosData < LowData
+  include LatestQueries
+end
+
+PostsData.latest # The latest posts, and VideosData.latest the latest videos
+```
+
+Ruby looks a constant up where its method is written, so without `LowData::Queries` a table like `Users` in the module isn't found. `Table` is the table of the repository that includes the module, so it's written `Table(...)`, which is resolved there. Each of the module's queries is a class method of the repository too, as its own methods are.

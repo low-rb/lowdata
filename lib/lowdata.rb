@@ -23,6 +23,7 @@ require_relative 'writer'
 require_relative 'data_expression/writes'
 require_relative 'table_reference'
 require_relative 'table_reference/writes'
+require_relative 'queries'
 
 class LowData
   class << self
@@ -49,6 +50,19 @@ class LowData
     # is, so it's a real method rather than a method_missing lookup. Existing class methods, like `table`, are kept.
     def method_added(name)
       super
+      define_factory_method(name)
+    end
+
+    # The Method Factory pattern for a module's methods too, like a module of shared queries, as method_added only sees
+    # methods defined in the class.
+    def include(*modules)
+      super.tap do
+        modules.each { |mod| mod.public_instance_methods.each { |name| define_factory_method(name) } }
+      end
+    end
+
+    # Defines a class method that calls the instance method of the same name on a new instance.
+    def define_factory_method(name)
       return if self == LowData || !public_method_defined?(name)
       return unless name.match?(/\A[a-z_]\w*[?!]?\z/) # Setters like `title=` stay instance methods.
       return if factory_method?(name) # A parent's class method already calls `new` on this class.
@@ -60,6 +74,7 @@ class LowData
         def #{name}(...) = new.public_send(:#{name}, ...) # def update(...) = new.public_send(:update, ...)
       RUBY
     end
+    private :define_factory_method
 
     # Resolve undefined constants in a repository to tables, so `Users` and `BlogPosts` become :users and :blog_posts.
     # `Table` is the repository's own table, joined to whichever related tables own the columns asked for.

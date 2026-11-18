@@ -1,16 +1,11 @@
-# Databases for running the specs locally:
+# MySQL for running the specs locally. Postgres runs from Homebrew, with a lowdata user and database:
+#   brew install postgresql@18 && brew services start postgresql@18
+#   psql -d postgres -c "create role lowdata login password 'lowdata'" && createdb -O lowdata lowdata_test
 #   docker compose up -d
 #   bundle config set --local with databases && bundle install
 #   DATABASE_URL=postgres://lowdata:lowdata@localhost:5432/lowdata_test bundle exec rspec
 #   DATABASE_URL=trilogy://lowdata:lowdata@127.0.0.1:3307/lowdata_test bundle exec rspec
 services:
-  postgres:
-    image: postgres:17
-    environment:
-      POSTGRES_USER: lowdata
-      POSTGRES_PASSWORD: lowdata
-      POSTGRES_DB: lowdata_test
-    ports: ['5432:5432']
   mysql:
     image: mysql:8.4
     environment:

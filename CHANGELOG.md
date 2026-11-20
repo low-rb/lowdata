@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Minor features that don't break backwards compatibility are released as patches.
 
+## Unreleased
+
+### Fixed
+
+- Every query shares one `Schema` per database, where each made its own, so the foreign keys and tables it looks up are read once while the app runs, not on every query. A page that made 99 queries makes 30. `LowData::Schema.reset` forgets them, as after a migration
+
 ## 0.4.1
 
 ### Added

@@ -1,8 +1,18 @@
 # frozen_string_literal: true
 
 class LowData
-  # Reads tables, columns and foreign keys from the database, caching each lookup.
+  # Reads tables, columns and foreign keys from the database, caching each lookup. Every query shares one per database,
+  # so a lookup is made once while the app runs. `Schema.reset` forgets them, as after a migration.
   class Schema
+    def self.for(database)
+      @instances ||= {}
+      @instances[database] ||= new(database:)
+    end
+
+    def self.reset
+      @instances = {}
+    end
+
     def initialize(database:)
       @database = database
       @schemas = {}
@@ -21,10 +31,14 @@ class LowData
       @foreign_keys[table] ||= @database.foreign_key_list(table)
     end
 
+    def tables
+      @tables ||= @database.tables
+    end
+
     # Tables with a foreign key to or from the table.
     def related_tables(table:)
       outgoing = foreign_keys(table:).map { |foreign_key| foreign_key[:table] }
-      incoming = @database.tables.select do |other|
+      incoming = tables.select do |other|
         foreign_keys(table: other).any? { |foreign_key| foreign_key[:table] == table }
       end
 

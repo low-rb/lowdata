@@ -51,7 +51,7 @@ class LowData
       raise ConfigError, ConfigError::MISSING_DATABASE if database.nil?
 
       @database = database
-      @schema = Schema.new(database:)
+      @schema = Schema.for(database)
       @filters = FilterCompiler.new(database:, schema: @schema)
       @orders = OrderCompiler.new(schema: @schema)
       @queries = QueryCompiler.new(database:)

@@ -241,6 +241,20 @@ SELECT product, quantity, order_id FROM line_items WHERE (order_id IN (...))
 ```
 </details>
 
+### Parent tables
+
+A table whose primary key is a foreign key to another table is that table's child, and the other is its parent. Rows that point at the parent then link to the child too, by its primary key. It's class table inheritance, like Django's multi-table inheritance or Sequel's `class_table_inheritance`, read from your foreign keys. When posts and pages are both content, `posts.id` references `content.id`, and photos of any content reference `content.id`:
+
+```ruby
+Posts[:title, Photos[:path]]
+# => [{ title: 'Rye', photos: [{ path: 'loaf.jpg' }, { path: 'crumb.jpg' }] }]
+
+Photos[:path, Posts[:title]]
+# => [{ path: 'loaf.jpg', posts: { title: 'Rye' } }, { path: 'crumb.jpg', posts: { title: 'Rye' } }]
+```
+
+A photo nests its post under the post's table name, as its foreign key is named for content. Joins link the same way: `Posts[:title] & Photos[:path]`.
+
 ## Joins
 
 ### Inner join

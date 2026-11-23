@@ -10,7 +10,7 @@ require 'stringio'
 # See compose.yaml to start them locally.
 module SpecDatabase
   # Dropped in this order, so no table is dropped while another references it.
-  TABLES = %i[likes reviews tags comments posts users].freeze
+  TABLES = %i[photos notes content likes reviews tags comments posts users].freeze
 
   class << self
     def connect
@@ -94,10 +94,28 @@ RSpec.shared_context 'with a database' do
         foreign_key :user_id, :users
       end
 
+      # Notes are content, as their ids are content's, so photos of content are a note's photos.
+      db.create_table(:content) do
+        primary_key :id
+        String :kind
+      end
+      db.create_table(:notes) do
+        foreign_key :id, :content, primary_key: true
+        String :title
+      end
+      db.create_table(:photos) do
+        primary_key :id
+        foreign_key :content_id, :content
+        String :path
+      end
+
       db[:users].import(%i[id username], [[1, 'alice'], [2, 'bob'], [3, 'carol']])
       db[:posts].import(%i[id user_id title views], [[1, 1, 'Hello', 10], [2, 2, 'World', 200], [3, nil, 'Orphan', nil]])
       db[:comments].import(%i[id post_id body], [[1, 1, 'Nice'], [2, nil, 'Spam']])
       db[:likes].import(%i[id post_id user_id], [[1, 1, 2], [2, 1, 3]])
+      db[:content].import(%i[id kind], [[1, 'notes'], [2, 'notes']])
+      db[:notes].import(%i[id title], [[1, 'Rye'], [2, 'Spelt']])
+      db[:photos].import(%i[id content_id path], [[1, 1, 'loaf.jpg'], [2, 1, 'crumb.jpg']])
       db[:reviews].import(%i[id author_id editor_id rating title], [[1, 1, 2, 5, 'Good']])
 
       # Postgres doesn't move a table's id sequence past ids inserted explicitly, so the next insert would reuse id 1.

@@ -35,12 +35,10 @@ class LowData
       @tables ||= @database.tables
     end
 
-    # Tables with a foreign key to or from the table.
+    # Tables with a foreign key to or from the table, or to its parent.
     def related_tables(table:)
       outgoing = foreign_keys(table:).map { |foreign_key| foreign_key[:table] }
-      incoming = tables.select do |other|
-        foreign_keys(table: other).any? { |foreign_key| foreign_key[:table] == table }
-      end
+      incoming = tables.select { |other| links(from: other, to: table).any? }
 
       # Sorted, because databases list their tables in different orders, and error messages name the first.
       ((outgoing + incoming).uniq - [table]).sort
@@ -69,14 +67,30 @@ class LowData
       links(from: table, to: other).any? || links(from: other, to: table).any?
     end
 
-    # Foreign keys on the `from` table that reference the `to` table, as their columns and the keys they reference.
+    # Foreign keys on the `from` table that reference the `to` table, as their columns and the keys they reference. A
+    # foreign key to the `to` table's parent links to it too, by its primary key, which has the parent's ids.
     def links(from:, to:)
-      foreign_keys(table: from).select { |foreign_key| foreign_key[:table] == to }.map do |foreign_key|
+      own = foreign_keys(table: from).select { |foreign_key| foreign_key[:table] == to }.map do |foreign_key|
         { columns: foreign_key[:columns], keys: foreign_key[:key] || primary_key(table: to) }
       end
+      own + parent_links(from:, to:)
+    end
+
+    # The table a table's primary key is a foreign key to, its parent, like content for posts whose id is content's id.
+    def parent(table:)
+      foreign_keys(table:).find { |foreign_key| foreign_key[:columns] == primary_key(table:) }&.dig(:table)
     end
 
     private
+
+    # Foreign keys on the `from` table to the `to` table's parent, as links to the `to` table's primary key.
+    def parent_links(from:, to:)
+      parent = parent(table: to)
+      return [] if parent.nil? || [to, parent].include?(from)
+
+      foreign_keys(table: from).select { |foreign_key| foreign_key[:table] == parent }
+                               .map { |foreign_key| { columns: foreign_key[:columns], keys: primary_key(table: to), parent: } }
+    end
 
     def backwards_rename_message(table:, name:, column:)
       "#{table} has no #{column} column. To rename #{name}, write #{column}: :#{name}"

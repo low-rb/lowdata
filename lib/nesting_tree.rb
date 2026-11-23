@@ -100,9 +100,10 @@ class LowData
       named.first if named.one?
     end
 
-    # `user_id` nests as `user:`, like the association name in most ORMs.
+    # `user_id` nests as `user:`, like the association name in most ORMs, and a foreign key to a parent as its child.
     def one(parent:, child:, link:, key:)
       column, foreign_key = sole_columns(parent:, child:, link:)
+      key ||= child if link[:parent]
       key ||= column.to_s.end_with?('_id') ? column.to_s.delete_suffix('_id').to_sym : child
       [key, Nesting::Link.new(parent_column: column, child_column: foreign_key, many: false)]
     end

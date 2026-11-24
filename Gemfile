@@ -6,6 +6,7 @@ source 'https://rubygems.org'
 gemspec
 
 group :development do
+  gem 'lowevent', path: '../lowevent'
   gem 'irb'
   gem 'rack'
   gem 'rack-test'

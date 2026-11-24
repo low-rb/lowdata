@@ -5,6 +5,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Minor features that don't break backwards compatibility are released as patches.
 
+## 0.4.4
+
+### Added
+
+- `DataEvent` times each query the database runs in the tree of the request or interval that ran it. LowData adds the `lowdata_events` Sequel extension to its database for this
+
+### Changed
+
+- Needs LowEvent 0.8.6
+
 ## 0.4.3
 
 ### Added

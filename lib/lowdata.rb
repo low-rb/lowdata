@@ -24,13 +24,16 @@ require_relative 'data_expression/writes'
 require_relative 'table_reference'
 require_relative 'table_reference/writes'
 require_relative 'queries'
+require_relative 'data_event'
 
 class LowData
   class << self
     attr_reader :database
     attr_writer :table
 
+    # Its queries are timed in the request's tree as DataEvents.
     def database=(database)
+      database&.extension(:lowdata_events)
       @database = database
       @tables = nil
     end

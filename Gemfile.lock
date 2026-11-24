@@ -1,8 +1,18 @@
 PATH
+  remote: ../lowevent
+  specs:
+    lowevent (0.8.6)
+      lowtype (~> 1.4)
+      observers (~> 1.1, >= 1.1.3)
+      protocol-http
+      providers
+
+PATH
   remote: .
   specs:
-    lowdata (0.4.3)
+    lowdata (0.4.4)
       expressions (~> 0.4)
+      lowevent (~> 0.8, >= 0.8.6)
       lowtype (~> 1.6)
       sequel (~> 5.0)
 
@@ -33,6 +43,7 @@ GEM
       expressions (~> 0.1)
       lowkey (>= 0.7.1)
       trees
+    observers (1.1.3)
     parallel (2.3.0)
     parser (3.3.13.0)
       ast (~> 2.4.1)
@@ -48,6 +59,9 @@ GEM
       prettyprint
     prettyprint (0.2.1)
     prism (1.9.0)
+    protocol-http (0.72.1)
+    providers (0.6.2)
+      expressions (~> 0.1)
     racc (1.8.1)
     rack (3.2.7)
     rack-test (2.3.0)
@@ -129,6 +143,7 @@ PLATFORMS
 DEPENDENCIES
   irb
   lowdata!
+  lowevent!
   pg
   rack
   rack-test
@@ -152,9 +167,11 @@ CHECKSUMS
   language_server-protocol (3.17.0.6) sha256=5ef2c0c138f8267e1bc631d3328347d354f96724b0af22f2c79516120443b7f0
   lint_roller (1.1.0) sha256=2c0c845b632a7d172cb849cc90c1bce937a28c5c8ccccb50dfd46a485003cc87
   logger (1.7.0) sha256=196edec7cc44b66cfb40f9755ce11b392f21f7967696af15d274dde7edff0203
-  lowdata (0.4.3)
+  lowdata (0.4.4)
+  lowevent (0.8.6)
   lowkey (0.7.1) sha256=f2d5c2834d7f201d2536691dc91e9d4bc77cb361e46dace5674e42abbe39df6f
   lowtype (1.6.1) sha256=22844bcfa7a3a2a5b82887e50f308483b0e6c8e417c429441bfb0881641238fd
+  observers (1.1.3) sha256=b6e59f95ce29ee5f8b293168c4a7434b515580f6469278acb9462374d1b576ee
   parallel (2.3.0) sha256=f75a3e904101ce6a1ccb6b8dc800cbafd42166d83330192438dcf29395167a6f
   parser (3.3.13.0) sha256=e02f9b63c2fe05b0c68f692ba4df89b3cb113b663964f75d988fbebfd6c3deca
   pg (1.7.0) sha256=f7b536501284e883d4c9ef86dbde0313063e4aaafc23575b0017b0d572a26afb
@@ -167,6 +184,8 @@ CHECKSUMS
   pp (0.6.4) sha256=dfcb0fce700c41456265922884f9fe195d7fbb0674a3578e6c0f69588e82b570
   prettyprint (0.2.1) sha256=d555d57ea6d7cf001d4774b693546a6bd88bec1e778ddffb5c60b68ceec4b7d4
   prism (1.9.0) sha256=7b530c6a9f92c24300014919c9dcbc055bf4cdf51ec30aed099b06cd6674ef85
+  protocol-http (0.72.1) sha256=5b0d718fb5d45ebc2690bf204977bb62d6550773e55c417ee9aa61be032876f3
+  providers (0.6.2) sha256=23b0c4aff06d389612751debca316f30a946c9a4afe2e4175d2878f4284c9c8b
   racc (1.8.1) sha256=4a7f6929691dbec8b5209a0b373bc2614882b55fc5d2e447a21aaa691303d62f
   rack (3.2.7) sha256=93e13e1c24f93556671d85d2d79fa228c3485815c50d7e2f265b5330c6528fb7
   rack-test (2.3.0) sha256=b118d177cc002c572fc1b6fd8d19c9ed5881a36e8d6f689f9e618f9f861241e8

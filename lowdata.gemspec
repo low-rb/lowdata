@@ -26,7 +26,7 @@ Gem::Specification.new do |spec|
   spec.executables = spec.files.grep(%r{\Aexe/}) { |f| File.basename(f) }
 
   spec.add_dependency 'expressions', '~> 0.4'
-  spec.add_dependency 'lowevent', '~> 0.8', '>= 0.8.5'
+  spec.add_dependency 'lowevent', '~> 0.8', '>= 0.8.6'
   spec.add_dependency 'lowtype', '~> 1.6'
   spec.add_dependency 'sequel', '~> 5.0'
 end
